@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import os
+
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from fastapi import APIRouter, Request, Response
+
+from inkprint.core.db import check_db
 
 router = APIRouter()
 
@@ -11,13 +15,16 @@ router = APIRouter()
 @router.get("/health")
 async def health() -> dict[str, str]:
     """Health check endpoint."""
-    return {"status": "ok", "version": "0.1.0", "db": "ok"}
+    db_status = await check_db()
+    commit = os.environ.get("COMMIT_SHA", "dev")
+    return {"status": "ok", "version": "0.1.0", "db": db_status, "commit": commit}
 
 
 @router.get("/version")
 async def version() -> dict[str, str]:
     """Version endpoint."""
-    return {"version": "0.1.0"}
+    commit = os.environ.get("COMMIT_SHA", "dev")
+    return {"version": "0.1.0", "commit_sha": commit}
 
 
 @router.get("/public-key.pem")

@@ -1,0 +1,47 @@
+services:
+  - type: web
+    name: inkprint-backend
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: INKPRINT_SIGNING_KEY_PRIVATE
+        sync: false
+      - key: INKPRINT_SIGNING_KEY_PUBLIC
+        sync: false
+      - key: INKPRINT_KEY_ID
+        sync: false
+      - key: VOYAGE_API_KEY
+        sync: false
+      - key: VOYAGE_MODEL
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_BASE_URL
+        sync: false
+      - key: OPENROUTER_MODEL_PRIMARY
+        sync: false
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_ENDPOINT
+        sync: false
+      - key: LANGFUSE_PUBLIC_KEY
+        sync: false
+      - key: LANGFUSE_SECRET_KEY
+        sync: false
+      - key: LANGFUSE_BASE_URL
+        sync: false
+      - key: DEMO_MODE
+        value: "true"
+      - key: PORT
+        value: "8000"
+      - key: APP_ENV
+        value: "production"
