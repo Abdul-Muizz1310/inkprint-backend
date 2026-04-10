@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 
 
 async def scan_the_stack(
     text: str,
     api_url: str = "https://huggingface.co/api/datasets/bigcode/the-stack-v2",
-) -> dict:
+) -> dict[str, Any]:
     """Query The Stack v2 index for code leak matches.
 
     Gated: requires HuggingFace auth token + TOS acceptance.

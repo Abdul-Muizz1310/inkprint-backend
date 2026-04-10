@@ -80,6 +80,8 @@ module = [
     "prometheus_fastapi_instrumentator.*",
     "qrcode.*",
     "vcr.*",
+    "yaml.*",
+    "jsonschema.*",
 ]
 ignore_missing_imports = true
 

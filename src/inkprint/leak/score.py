@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -11,10 +12,10 @@ class ScoreResult:
 
     hit_count: int
     confidence: float
-    hits: list[dict]
+    hits: list[dict[str, Any]]
 
 
-def score(hits: list[dict]) -> ScoreResult:
+def score(hits: list[dict[str, Any]]) -> ScoreResult:
     """Score a list of hits into a confidence value.
 
     Confidence bands:

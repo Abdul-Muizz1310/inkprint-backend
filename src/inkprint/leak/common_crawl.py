@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 import httpx
 
@@ -13,7 +14,7 @@ async def scan_common_crawl(
     text: str,
     simhash: int,
     cdx_url: str = "https://index.commoncrawl.org/CC-MAIN-2024-50-index",
-) -> dict:
+) -> dict[str, Any]:
     """Query Common Crawl CDX index for near-duplicate text.
 
     Strategy: extract title-like n-grams → query CDX → compare SimHash.

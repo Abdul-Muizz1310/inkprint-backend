@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -13,7 +14,7 @@ class CertificateCreate(BaseModel):
 
     text: str
     author: str
-    metadata: dict | None = None
+    metadata: dict[str, Any] | None = None
 
     @field_validator("text")
     @classmethod
@@ -41,19 +42,19 @@ class CertificateResponse(BaseModel):
     language: str | None
     issued_at: datetime
     signature: str
-    manifest: dict
+    manifest: dict[str, Any]
     storage_key: str
 
 
 class VerifyRequest(BaseModel):
     """Request body for POST /verify."""
 
-    manifest: dict
+    manifest: dict[str, Any]
     text: str | None = None
 
     @field_validator("manifest")
     @classmethod
-    def manifest_not_empty(cls, v: dict) -> dict:
+    def manifest_not_empty(cls, v: dict[str, Any]) -> dict[str, Any]:
         if not v:
             raise ValueError("manifest must not be empty")
         return v
@@ -63,7 +64,7 @@ class VerifyResponse(BaseModel):
     """Response body for POST /verify."""
 
     valid: bool
-    checks: dict
+    checks: dict[str, Any]
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -81,7 +82,7 @@ class DiffResponse(BaseModel):
     cosine: float
     verdict: str
     overlap_pct: int
-    changed_spans: list = Field(default_factory=list)
+    changed_spans: list[Any] = Field(default_factory=list)
 
 
 class LeakScanRequest(BaseModel):
@@ -101,5 +102,5 @@ class LeakScanResponse(BaseModel):
 class SearchResponse(BaseModel):
     """Response body for GET /search."""
 
-    results: list
+    results: list[Any]
     total: int

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+from typing import Any
 from uuid import UUID
 
 import qrcode
@@ -13,7 +14,7 @@ from inkprint.schemas.certificate import CertificateCreate, CertificateResponse
 router = APIRouter()
 
 
-def _get_keys(request: Request) -> tuple:
+def _get_keys(request: Request) -> tuple[Any, Any, str]:
     return request.app.state.private_key, request.app.state.public_key, request.app.state.key_id
 
 
@@ -50,14 +51,15 @@ async def get_certificate(cert_id: UUID) -> CertificateResponse:
 
 
 @router.get("/certificates/{cert_id}/manifest")
-async def get_manifest(cert_id: UUID) -> dict:
+async def get_manifest(cert_id: UUID) -> dict[str, Any]:
     """Retrieve the C2PA manifest for a certificate."""
     from inkprint.services.certificate_service import get_certificate as svc_get
 
     record = svc_get(str(cert_id))
     if record is None:
         raise HTTPException(status_code=404, detail="Certificate not found")
-    return record["manifest"]
+    manifest: dict[str, Any] = record["manifest"]
+    return manifest
 
 
 @router.get("/certificates/{cert_id}/qr")

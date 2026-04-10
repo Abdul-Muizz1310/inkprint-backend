@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
@@ -29,7 +31,7 @@ async def create_leak_scan(body: LeakScanRequest) -> LeakScanResponse:
 
 
 @router.get("/leak-scan/{scan_id}")
-async def get_leak_scan(scan_id: UUID) -> dict:
+async def get_leak_scan(scan_id: UUID) -> dict[str, Any]:
     """Get the status / result of a leak scan."""
     record = leak_service.get_scan(str(scan_id))
     if record is None:
@@ -44,7 +46,7 @@ async def stream_leak_scan(scan_id: UUID) -> StreamingResponse:
     if record is None:
         raise HTTPException(status_code=404, detail="Scan not found")
 
-    async def event_generator():  # type: ignore[return]
+    async def event_generator() -> AsyncIterator[str]:
         yield f"data: {{'scan_id': '{scan_id}', 'status': '{record['status']}'}}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

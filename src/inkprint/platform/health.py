@@ -9,13 +9,13 @@ router = APIRouter()
 
 
 @router.get("/health")
-async def health() -> dict:
+async def health() -> dict[str, str]:
     """Health check endpoint."""
     return {"status": "ok", "version": "0.1.0", "db": "ok"}
 
 
 @router.get("/version")
-async def version() -> dict:
+async def version() -> dict[str, str]:
     """Version endpoint."""
     return {"version": "0.1.0"}
 

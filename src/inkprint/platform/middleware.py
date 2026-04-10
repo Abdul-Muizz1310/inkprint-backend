@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
 from fastapi import FastAPI, Request, Response
@@ -25,8 +26,10 @@ def add_middleware(app: FastAPI) -> None:
     )
 
     @app.middleware("http")
-    async def request_id_middleware(request: Request, call_next: object) -> Response:
+    async def request_id_middleware(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         request_id = request.headers.get("x-request-id", str(uuid4()))
-        response: Response = await call_next(request)  # type: ignore[misc]
+        response: Response = await call_next(request)
         response.headers["X-Request-Id"] = request_id
         return response

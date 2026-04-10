@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from inkprint.fingerprint.compare import compare
@@ -16,7 +17,7 @@ from inkprint.provenance.signer import sign, verify
 logger = logging.getLogger(__name__)
 
 # In-memory store — replaced with SQLAlchemy in a later step.
-_certificates: dict[str, dict] = {}
+_certificates: dict[str, dict[str, Any]] = {}
 
 
 def reset_store() -> None:
@@ -27,12 +28,12 @@ def reset_store() -> None:
 async def create_certificate(
     text: str,
     author: str,
-    metadata: dict | None,
+    metadata: dict[str, Any] | None,
     *,
     private_key: object,
     public_key: object,
     key_id: str,
-) -> dict:
+) -> dict[str, Any]:
     """Create a certificate: canonicalize, hash, sign, fingerprint, build manifest."""
     from cryptography.hazmat.primitives.asymmetric.ed25519 import (
         Ed25519PrivateKey,
@@ -101,17 +102,17 @@ async def create_certificate(
     return record
 
 
-def get_certificate(cert_id: str) -> dict | None:
+def get_certificate(cert_id: str) -> dict[str, Any] | None:
     """Look up a certificate by UUID string."""
     return _certificates.get(cert_id)
 
 
 def verify_certificate(
-    manifest: dict,
+    manifest: dict[str, Any],
     text: str | None,
     *,
     public_key: object,
-) -> dict:
+) -> dict[str, Any]:
     """Verify a manifest's signature and optionally check text hash."""
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
@@ -157,7 +158,7 @@ def verify_certificate(
 async def diff_certificate(
     parent_id: str,
     text: str,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Compare new text against a parent certificate's fingerprints."""
     parent = get_certificate(parent_id)
     if parent is None:
@@ -201,9 +202,9 @@ async def diff_certificate(
     }
 
 
-def search_certificates(text: str, mode: str) -> dict:
+def search_certificates(text: str, mode: str) -> dict[str, Any]:
     """Search certificates by hash (exact) or embedding (semantic)."""
-    results: list[dict] = []
+    results: list[dict[str, Any]] = []
 
     if mode == "exact":
         canonical = canonicalize(text)

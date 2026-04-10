@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 
 
 async def scan_huggingface(
     text: str,
     api_url: str = "https://datasets-server.huggingface.co",
-) -> dict:
+) -> dict[str, Any]:
     """Query HuggingFace datasets search for text matches."""
     query = text[:200].strip()
     if not query:

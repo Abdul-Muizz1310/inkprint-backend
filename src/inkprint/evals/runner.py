@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 
 @dataclass
@@ -12,7 +13,7 @@ class EvalReport:
 
     exit_code: int = 0
     suites_run: list[str] = field(default_factory=list)
-    results: dict = field(default_factory=dict)
+    results: dict[str, Any] = field(default_factory=dict)
 
 
 def run_all(

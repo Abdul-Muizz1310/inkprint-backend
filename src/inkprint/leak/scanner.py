@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable, Coroutine
 from dataclasses import dataclass, field
+from typing import Any
 from uuid import UUID
 
 from inkprint.leak.common_crawl import scan_common_crawl
@@ -24,7 +25,7 @@ CORPUS_TIMEOUT = 30.0  # seconds per corpus
 class ScanResult:
     """Aggregated result from all corpora."""
 
-    corpus_results: list[dict] = field(default_factory=list)
+    corpus_results: list[dict[str, Any]] = field(default_factory=list)
     score: ScoreResult | None = None
 
 
@@ -56,21 +57,21 @@ async def save_scan(scan_result: ScanResult) -> None:
     pass
 
 
-CorpusFactory = tuple[str, object]  # (name, callable-that-returns-coroutine-args)
+CorpusScanFn = Callable[..., Coroutine[Any, Any, dict[str, Any]]]
 
 
 async def _run_corpus(
     name: str,
-    factory: object,
-    args: tuple = (),
+    factory: CorpusScanFn,
+    args: tuple[Any, ...] = (),
     max_retries: int = 2,
-) -> dict:
+) -> dict[str, Any]:
     """Run a single corpus scan with timeout, retry, and error handling."""
     for attempt in range(max_retries):
         try:
-            coro = factory(*args)  # type: ignore[operator]
+            coro = factory(*args)
             result = await asyncio.wait_for(coro, timeout=CORPUS_TIMEOUT)
-            return result  # type: ignore[return-value]
+            return result
         except TimeoutError:
             logger.warning("Corpus %s timed out (attempt %d)", name, attempt + 1)
             if attempt == max_retries - 1:
@@ -86,9 +87,11 @@ async def _run_corpus(
     return {"corpus": name, "hits": [], "hit_count": 0, "status": "error"}
 
 
-def _build_tasks(corpora: list[str], text: str, simhash: int) -> list[tuple[str, object, tuple]]:
+def _build_tasks(
+    corpora: list[str], text: str, simhash: int
+) -> list[tuple[str, CorpusScanFn, tuple[Any, ...]]]:
     """Build (name, factory, args) tuples for requested corpora."""
-    tasks: list[tuple[str, object, tuple]] = []
+    tasks: list[tuple[str, CorpusScanFn, tuple[Any, ...]]] = []
     if "common_crawl" in corpora:
         tasks.append(("common_crawl", scan_common_crawl, (text, simhash)))
     if "huggingface" in corpora:
@@ -102,7 +105,7 @@ async def scan(
     certificate_id: UUID,
     corpora: list[str] | None = None,
     stream: bool = False,
-) -> ScanResult | AsyncIterator[dict]:
+) -> ScanResult | AsyncIterator[dict[str, Any]]:
     """Run leak scan across specified corpora.
 
     If stream=True, yields events as each corpus completes.
@@ -125,7 +128,7 @@ async def scan(
         result = await _run_corpus(name, factory, args)
         results.append(result)
 
-    all_hits = []
+    all_hits: list[dict[str, Any]] = []
     for r in results:
         all_hits.extend(r.get("hits", []))
 
@@ -135,8 +138,8 @@ async def scan(
 
 
 async def _stream_scan(
-    tasks: list[tuple[str, object, tuple]],
-) -> AsyncIterator[dict]:
+    tasks: list[tuple[str, CorpusScanFn, tuple[Any, ...]]],
+) -> AsyncIterator[dict[str, Any]]:
     """Yield events as each corpus completes."""
     for name, factory, args in tasks:
         result = await _run_corpus(name, factory, args)

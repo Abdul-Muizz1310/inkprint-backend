@@ -14,5 +14,5 @@ def compute_simhash(text: str) -> int:
     if not isinstance(text, str):
         raise TypeError(f"Expected str, got {type(text).__name__}")
     if not text.strip():
-        return Simhash("").value
-    return Simhash(text).value
+        return int(Simhash("").value)
+    return int(Simhash(text).value)

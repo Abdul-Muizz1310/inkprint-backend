@@ -10,6 +10,6 @@ async def compute_embedding(text: str) -> list[float]:
 
     Uses the configured model (default: voyage-3-lite).
     """
-    client = voyageai.AsyncClient()
+    client = voyageai.AsyncClient()  # type: ignore[attr-defined]
     result = await client.embed([text], model="voyage-3-lite")
     return list(result.embeddings[0])

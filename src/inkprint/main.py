@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import os
+from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import (
@@ -24,7 +25,7 @@ from inkprint.platform.health import router as health_router
 from inkprint.platform.middleware import add_middleware
 
 
-def _load_keys() -> tuple:
+def _load_keys() -> tuple[Any, Any, str]:
     """Load or generate signing keys."""
     priv_b64 = os.environ.get("INKPRINT_SIGNING_KEY_PRIVATE", "")
     pub_b64 = os.environ.get("INKPRINT_SIGNING_KEY_PUBLIC", "")

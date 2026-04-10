@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 import jsonschema
 
 _SCHEMA_PATH = Path(__file__).parent / "c2pa_schema.json"
-_SCHEMA: dict | None = None
+_SCHEMA: dict[str, Any] | None = None
 
 LEGAL_NOTICE = (
     "This certificate is issued by inkprint for informational purposes only. "
@@ -19,7 +20,7 @@ LEGAL_NOTICE = (
 )
 
 
-def _load_schema() -> dict:
+def _load_schema() -> dict[str, Any]:
     global _SCHEMA
     if _SCHEMA is None:
         with open(_SCHEMA_PATH) as f:
@@ -37,7 +38,7 @@ def build_manifest(
     content_length: int,
     language: str | None,
     issued_at: datetime,
-) -> dict:
+) -> dict[str, Any]:
     """Build a C2PA v2.2-aligned manifest for a certificate."""
     if not isinstance(certificate_id, UUID):
         raise TypeError(f"certificate_id must be UUID, got {type(certificate_id).__name__}")
@@ -101,7 +102,7 @@ def build_manifest(
     }
 
 
-def validate_manifest(manifest: dict) -> None:
+def validate_manifest(manifest: dict[str, Any]) -> None:
     """Validate a manifest against the C2PA JSON Schema. Raises on failure."""
     schema = _load_schema()
     jsonschema.validate(instance=manifest, schema=schema)

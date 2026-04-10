@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID, uuid4
 
 # In-memory store for scan results.
-_scans: dict[str, dict] = {}
+_scans: dict[str, dict[str, Any]] = {}
 
 
 def reset_store() -> None:
@@ -13,7 +14,7 @@ def reset_store() -> None:
     _scans.clear()
 
 
-def create_scan(certificate_id: UUID, corpora: list[str] | None = None) -> dict:
+def create_scan(certificate_id: UUID, corpora: list[str] | None = None) -> dict[str, Any]:
     """Create a new leak scan record and return it."""
     scan_id = uuid4()
     record = {
@@ -27,6 +28,6 @@ def create_scan(certificate_id: UUID, corpora: list[str] | None = None) -> dict:
     return record
 
 
-def get_scan(scan_id: str) -> dict | None:
+def get_scan(scan_id: str) -> dict[str, Any] | None:
     """Look up a scan by UUID string."""
     return _scans.get(scan_id)
