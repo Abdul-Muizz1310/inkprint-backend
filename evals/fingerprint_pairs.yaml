@@ -1,0 +1,402 @@
+pairs:
+  # --- Similar pairs (1-60) ---
+  - original: "The mitochondria are often called the powerhouse of the cell because they generate most of the cell's supply of adenosine triphosphate."
+    variant: "Mitochondria earn the nickname 'cellular powerhouse' due to their role in producing the majority of ATP that a cell needs."
+    expected: similar
+
+  - original: "Basketball was invented in 1891 by James Naismith, a Canadian-American physical educator. He created the game as an indoor activity for his students during winter."
+    variant: "In 1891, Canadian-American gym teacher James Naismith devised basketball so his students could stay active indoors through the cold months."
+    expected: similar
+
+  - original: "To make a classic French omelette, whisk eggs vigorously and cook them in butter over medium-low heat, stirring constantly."
+    variant: "A traditional French omelette is prepared by beating eggs thoroughly, then cooking them in butter on moderate-low heat while stirring without pause."
+    expected: similar
+
+  - original: "The Great Wall of China stretches over 13,000 miles and was built across several dynasties to protect against northern invasions."
+    variant: "Spanning more than 13,000 miles, the Great Wall of China was constructed over multiple dynastic periods as a defense against invaders from the north."
+    expected: similar
+
+  - original: "Quantum computing leverages quantum mechanical phenomena such as superposition and entanglement to perform calculations far beyond the reach of classical computers."
+    variant: "By exploiting superposition and entanglement, quantum computers can tackle computations that are practically impossible for traditional machines."
+    expected: similar
+
+  - original: "The Amazon rainforest produces roughly 20 percent of the world's oxygen and is home to an estimated 10 percent of all species on Earth."
+    variant: "About one-fifth of global oxygen comes from the Amazon rainforest, which also shelters around ten percent of the planet's known species."
+    expected: similar
+
+  - original: "Leonardo da Vinci painted the Mona Lisa between 1503 and 1519. It now hangs in the Louvre Museum in Paris."
+    variant: "The Mona Lisa, created by Leonardo da Vinci over the years 1503 to 1519, is currently displayed at the Louvre in Paris."
+    expected: similar
+
+  - original: "Sourdough bread relies on wild yeast and lactic acid bacteria rather than commercial yeast for leavening."
+    variant: "Unlike conventional bread, sourdough uses naturally occurring wild yeast and lactic acid bacteria instead of store-bought yeast to rise."
+    expected: similar
+
+  - original: "The 2008 financial crisis was triggered largely by the collapse of the housing market and the proliferation of subprime mortgage-backed securities."
+    variant: "Subprime mortgage-backed securities and the bursting housing bubble were the primary catalysts of the 2008 global financial meltdown."
+    expected: similar
+
+  - original: "5G networks promise download speeds up to 10 gigabits per second and latency as low as one millisecond."
+    variant: "Fifth-generation wireless networks aim to deliver peak download rates of 10 Gbps with latency dropping to just one millisecond."
+    expected: similar
+
+  - original: "Photosynthesis converts carbon dioxide and water into glucose and oxygen using sunlight as an energy source."
+    variant: "Using energy from sunlight, photosynthesis transforms CO2 and water into glucose and releases oxygen as a byproduct."
+    expected: similar
+
+  - original: "Cricket is the second most popular sport in the world by number of fans, with an estimated 2.5 billion followers."
+    variant: "With roughly 2.5 billion fans worldwide, cricket ranks as the globe's second most followed sport."
+    expected: similar
+
+  - original: "Saffron is the most expensive spice by weight because each crocus flower yields only three stigmas, which must be hand-picked."
+    variant: "The high cost of saffron stems from the fact that every crocus blossom produces just three stigmas that require manual harvesting."
+    expected: similar
+
+  - original: "The Roman Empire reached its greatest territorial extent under Emperor Trajan in 117 AD, stretching from Britain to Mesopotamia."
+    variant: "Under Trajan in 117 AD, Rome controlled its largest territory ever, spanning from the British Isles all the way to Mesopotamia."
+    expected: similar
+
+  - original: "Machine learning models can overfit when trained on too little data, memorizing noise rather than learning generalizable patterns."
+    variant: "Overfitting occurs in ML models trained on insufficient data, causing them to memorize random noise instead of discovering meaningful patterns."
+    expected: similar
+
+  - original: "Coral reefs support roughly 25 percent of all marine species despite covering less than one percent of the ocean floor."
+    variant: "Although they blanket under one percent of the seabed, coral reefs are habitat for about a quarter of all ocean species."
+    expected: similar
+
+  - original: "Beethoven composed his Ninth Symphony while almost completely deaf, premiering it in Vienna in 1824."
+    variant: "Nearly entirely deaf, Beethoven wrote his Ninth Symphony, which debuted in Vienna in 1824."
+    expected: similar
+
+  - original: "A properly brewed espresso should take between 25 and 30 seconds to extract and produce roughly 25 milliliters of liquid."
+    variant: "Extracting a well-made espresso takes 25 to 30 seconds and yields approximately 25 ml of coffee."
+    expected: similar
+
+  - original: "The Treaty of Westphalia in 1648 ended the Thirty Years' War and established the principle of national sovereignty in Europe."
+    variant: "Signed in 1648, the Treaty of Westphalia concluded the Thirty Years' War and laid the groundwork for the modern concept of state sovereignty."
+    expected: similar
+
+  - original: "Blockchain technology uses a distributed ledger to record transactions in a way that is transparent, immutable, and verifiable by all participants."
+    variant: "A blockchain is a shared, tamper-proof ledger where every participant can transparently verify recorded transactions."
+    expected: similar
+
+  - original: "Monarch butterflies migrate up to 3,000 miles from Canada to central Mexico each autumn."
+    variant: "Every fall, monarch butterflies undertake a migration of up to 3,000 miles, traveling from Canada down to central Mexico."
+    expected: similar
+
+  - original: "Usain Bolt set the 100-meter world record at 9.58 seconds during the 2009 World Championships in Berlin."
+    variant: "At the 2009 Berlin World Championships, Usain Bolt ran the 100 meters in 9.58 seconds, establishing a new world record."
+    expected: similar
+
+  - original: "Risotto requires constant stirring as warm broth is added gradually, coaxing starch from the rice to create a creamy texture."
+    variant: "The creamy consistency of risotto comes from slowly adding hot broth while continuously stirring, which releases starch from the grains."
+    expected: similar
+
+  - original: "The Rosetta Stone, discovered in 1799, was key to deciphering Egyptian hieroglyphics because it contained the same text in three scripts."
+    variant: "Found in 1799, the Rosetta Stone enabled scholars to decode hieroglyphics by presenting identical content in three different writing systems."
+    expected: similar
+
+  - original: "CRISPR-Cas9 allows scientists to edit genes with unprecedented precision by cutting DNA at specific locations."
+    variant: "Gene editing with CRISPR-Cas9 works by targeting and cutting DNA at exact positions, giving researchers unmatched precision."
+    expected: similar
+
+  - original: "Mount Everest stands at 8,849 meters above sea level, making it the tallest mountain on Earth measured from sea level."
+    variant: "At 8,849 meters, Everest is the highest peak on the planet when measured from sea level."
+    expected: similar
+
+  - original: "Shakespeare wrote approximately 37 plays and 154 sonnets during his career, influencing the English language profoundly."
+    variant: "Over his lifetime, Shakespeare penned around 37 plays and 154 sonnets, leaving an enormous mark on the English language."
+    expected: similar
+
+  - original: "Caramelization occurs when sugar is heated above 170 degrees Celsius, breaking down and forming new compounds with complex flavors."
+    variant: "Heating sugar past 170°C triggers caramelization, a process that decomposes the sugar into flavorful new compounds."
+    expected: similar
+
+  - original: "The fall of Constantinople in 1453 to the Ottoman Turks marked the end of the Byzantine Empire and reshaped the geopolitical landscape of Europe."
+    variant: "When the Ottoman Turks captured Constantinople in 1453, the Byzantine Empire came to an end, fundamentally altering European geopolitics."
+    expected: similar
+
+  - original: "Rust's ownership model prevents data races at compile time, eliminating an entire class of concurrency bugs."
+    variant: "By enforcing ownership rules at compile time, Rust makes data races impossible and removes a whole category of concurrency errors."
+    expected: similar
+
+  - original: "The Mariana Trench is the deepest known point in the ocean, reaching approximately 11,034 meters below sea level."
+    variant: "At about 11,034 meters deep, the Mariana Trench holds the record for the deepest known location in the world's oceans."
+    expected: similar
+
+  - original: "Serena Williams won 23 Grand Slam singles titles, the most by any player in the Open Era."
+    variant: "With 23 Grand Slam singles victories, Serena Williams holds the Open Era record for the most major titles won."
+    expected: similar
+
+  - original: "Fermentation is the metabolic process by which yeast converts sugars into alcohol and carbon dioxide in the absence of oxygen."
+    variant: "In anaerobic conditions, yeast breaks down sugars into ethanol and CO2 through the metabolic process called fermentation."
+    expected: similar
+
+  - original: "The invention of the printing press by Gutenberg around 1440 revolutionized the spread of knowledge across Europe."
+    variant: "Gutenberg's printing press, developed around 1440, transformed how knowledge was disseminated throughout Europe."
+    expected: similar
+
+  - original: "Docker containers package applications with all their dependencies, ensuring consistent behavior across development and production environments."
+    variant: "By bundling apps together with every dependency, Docker containers guarantee identical behavior whether running in dev or production."
+    expected: similar
+
+  - original: "The Great Barrier Reef stretches over 2,300 kilometers along the northeast coast of Australia and is visible from space."
+    variant: "Extending more than 2,300 km off Australia's northeastern shore, the Great Barrier Reef is so large it can be seen from orbit."
+    expected: similar
+
+  - original: "Picasso's Guernica depicts the horrors of the bombing of the Basque town during the Spanish Civil War."
+    variant: "Guernica, painted by Picasso, portrays the devastation caused by the aerial bombing of a Basque town in the Spanish Civil War."
+    expected: similar
+
+  - original: "To julienne vegetables, cut them into thin matchstick-sized strips about 3 millimeters wide and 5 centimeters long."
+    variant: "Julienning involves slicing vegetables into matchstick-like strips roughly 3 mm across and 5 cm in length."
+    expected: similar
+
+  - original: "The Suez Canal, completed in 1869, connects the Mediterranean Sea to the Red Sea and dramatically shortened maritime trade routes between Europe and Asia."
+    variant: "Opened in 1869, the Suez Canal links the Mediterranean and Red Seas, vastly reducing shipping distances between Europe and Asia."
+    expected: similar
+
+  - original: "Neural networks loosely mimic the structure of the human brain, using layers of interconnected nodes to process information."
+    variant: "Inspired by the brain's architecture, neural networks use interconnected layers of nodes to analyze and transform data."
+    expected: similar
+
+  - original: "Venus flytraps snap shut in less than half a second when trigger hairs on their inner surfaces are stimulated twice."
+    variant: "When the trigger hairs inside a Venus flytrap are touched twice, the trap closes in under half a second."
+    expected: similar
+
+  - original: "Michael Phelps holds the record for the most Olympic gold medals ever won by an individual, with 23 golds across five Games."
+    variant: "With 23 Olympic gold medals earned over five separate Games, Michael Phelps is the most decorated Olympic champion in history."
+    expected: similar
+
+  - original: "Tempering chocolate involves carefully heating and cooling it to stabilize the cocoa butter crystals for a glossy finish and satisfying snap."
+    variant: "The process of tempering chocolate uses precise temperature control to align cocoa butter crystals, yielding a shiny surface and crisp snap."
+    expected: similar
+
+  - original: "The Magna Carta, signed in 1215, limited the power of the English king and laid the foundation for constitutional governance."
+    variant: "Signed in 1215, the Magna Carta curtailed royal authority in England and became a cornerstone of constitutional government."
+    expected: similar
+
+  - original: "Kubernetes orchestrates containerized applications across clusters of machines, handling scaling, load balancing, and self-healing automatically."
+    variant: "Container orchestration with Kubernetes automates scaling, load distribution, and recovery across multi-machine clusters."
+    expected: similar
+
+  - original: "The Sahara Desert spans roughly 9.2 million square kilometers, making it the largest hot desert on Earth."
+    variant: "Covering approximately 9.2 million km², the Sahara is the world's biggest hot desert."
+    expected: similar
+
+  - original: "Pelé scored 1,281 goals in 1,363 matches during his professional career, a record that stood for decades."
+    variant: "Over 1,363 professional games, Pelé netted 1,281 goals — a tally that remained unmatched for many years."
+    expected: similar
+
+  - original: "Sous vide cooking involves sealing food in a vacuum bag and immersing it in a precisely controlled water bath for extended periods."
+    variant: "In sous vide, food is vacuum-sealed and placed in a water bath held at an exact temperature for a long duration."
+    expected: similar
+
+  - original: "The French Revolution began in 1789 with the storming of the Bastille and led to the end of the monarchy in France."
+    variant: "Starting with the storming of the Bastille in 1789, the French Revolution ultimately toppled the French monarchy."
+    expected: similar
+
+  - original: "Git tracks changes to source code using a directed acyclic graph of commits, enabling efficient branching and merging."
+    variant: "By organizing commits in a directed acyclic graph, Git provides fast branching and merging for source code version control."
+    expected: similar
+
+  - original: "Octopuses have three hearts, blue blood, and can change both the color and texture of their skin in milliseconds."
+    variant: "With three hearts and blue blood, octopuses can alter their skin's color and texture almost instantaneously."
+    expected: similar
+
+  - original: "Roger Federer won 20 Grand Slam titles across a career spanning over two decades of professional tennis."
+    variant: "Over a career lasting more than twenty years, Roger Federer claimed 20 Grand Slam championships."
+    expected: similar
+
+  - original: "Blanching vegetables by briefly boiling then ice-bathing them preserves color, texture, and nutritional value before freezing."
+    variant: "A quick boil followed by an ice bath — known as blanching — locks in the color, texture, and nutrients of vegetables prior to freezing."
+    expected: similar
+
+  - original: "The Apollo 11 mission in 1969 made Neil Armstrong and Buzz Aldrin the first humans to walk on the Moon."
+    variant: "Neil Armstrong and Buzz Aldrin became the first people to set foot on the lunar surface during the Apollo 11 mission of 1969."
+    expected: similar
+
+  - original: "WebAssembly enables near-native performance in web browsers by compiling code written in languages like C++ and Rust to a portable binary format."
+    variant: "Languages such as C++ and Rust can be compiled to WebAssembly, a binary format that runs at near-native speed inside browsers."
+    expected: similar
+
+  - original: "Blue whales are the largest animals ever known to have existed, reaching lengths of up to 30 meters and weights of nearly 200 tonnes."
+    variant: "Growing up to 30 meters long and weighing close to 200 tonnes, blue whales are the biggest creatures to have ever lived."
+    expected: similar
+
+  - original: "Simone Biles has won more World Championship medals than any other gymnast in history, with a total of 30."
+    variant: "With 30 World Championship medals, Simone Biles holds the all-time record for the most medals won by any gymnast at Worlds."
+    expected: similar
+
+  - original: "A roux is made by cooking equal parts flour and fat together, forming the base for sauces like béchamel and velouté."
+    variant: "Equal parts flour and fat cooked together form a roux, which serves as the foundation for classic sauces such as béchamel and velouté."
+    expected: similar
+
+  - original: "The discovery of penicillin by Alexander Fleming in 1928 ushered in the age of antibiotics and saved millions of lives."
+    variant: "Alexander Fleming's 1928 discovery of penicillin launched the antibiotic era, ultimately saving countless millions of people."
+    expected: similar
+
+  - original: "GraphQL lets clients request exactly the data they need in a single query, avoiding the over-fetching problem common with REST APIs."
+    variant: "Unlike REST, which often returns excess data, GraphQL allows clients to specify precisely which fields they want in one request."
+    expected: similar
+
+  # --- Unrelated pairs (61-100) ---
+  - original: "Glaciers contain about 69 percent of the world's fresh water, mostly locked in the ice sheets of Antarctica and Greenland."
+    variant: "The rules of chess require that the king must be moved out of check immediately, either by moving, blocking, or capturing the threatening piece."
+    expected: unrelated
+
+  - original: "A tennis serve must land in the diagonally opposite service box to be considered valid."
+    variant: "The Maillard reaction between amino acids and reducing sugars produces the brown crust and complex flavors on seared steak."
+    expected: unrelated
+
+  - original: "Yeast dough should be proofed in a warm, draft-free environment until it roughly doubles in size."
+    variant: "Saturn's rings are composed primarily of ice particles ranging in size from tiny grains to house-sized chunks."
+    expected: unrelated
+
+  - original: "The Silk Road was an ancient network of trade routes connecting China to the Mediterranean, facilitating cultural and commercial exchange."
+    variant: "TypeScript adds static type checking to JavaScript, catching many common errors at compile time rather than at runtime."
+    expected: unrelated
+
+  - original: "TCP ensures reliable, ordered delivery of data between applications by using acknowledgments and retransmissions."
+    variant: "The Galápagos Islands are home to species found nowhere else on Earth, including marine iguanas and giant tortoises."
+    expected: unrelated
+
+  - original: "Humpback whales communicate through complex songs that can last for hours and travel vast distances through the ocean."
+    variant: "In volleyball, a team is allowed a maximum of three consecutive touches before the ball must cross over the net."
+    expected: unrelated
+
+  - original: "The Pythagorean theorem states that in a right triangle, the square of the hypotenuse equals the sum of the squares of the other two sides."
+    variant: "To deglaze a pan, pour a liquid such as wine or stock into the hot pan and scrape up the browned bits from the bottom."
+    expected: unrelated
+
+  - original: "Mahatma Gandhi led India's nonviolent independence movement against British colonial rule through civil disobedience and peaceful protest."
+    variant: "Solid-state drives use flash memory chips with no moving parts, making them faster and more shock-resistant than traditional hard drives."
+    expected: unrelated
+
+  - original: "CSS Grid allows developers to create two-dimensional layouts with rows and columns directly in the browser."
+    variant: "Emperor penguins can dive to depths of over 500 meters and hold their breath for more than 20 minutes."
+    expected: unrelated
+
+  - original: "The Tour de France is an annual men's multiple-stage bicycle race primarily held in France, covering roughly 3,500 kilometers."
+    variant: "The pH scale measures how acidic or basic a solution is, ranging from 0 for the most acidic to 14 for the most basic."
+    expected: unrelated
+
+  - original: "Bees perform a waggle dance to communicate the direction and distance of food sources to other members of the hive."
+    variant: "The Treaty of Versailles, signed in 1919, imposed heavy reparations on Germany and redrew the map of Europe after World War I."
+    expected: unrelated
+
+  - original: "A relational database organizes data into tables with rows and columns, linked by primary and foreign keys."
+    variant: "The Nile River flows northward for approximately 6,650 kilometers, making it one of the longest rivers in the world."
+    expected: unrelated
+
+  - original: "Lionel Messi holds the record for the most Ballon d'Or awards, having won the prestigious trophy eight times."
+    variant: "Emulsification is the process of combining two immiscible liquids, like oil and vinegar, into a stable, uniform mixture."
+    expected: unrelated
+
+  - original: "Marie Curie was the first person to win Nobel Prizes in two different sciences: physics in 1903 and chemistry in 1911."
+    variant: "The offside rule in soccer states that an attacking player must have at least two opponents between them and the goal when the ball is played."
+    expected: unrelated
+
+  - original: "Load balancers distribute incoming network traffic across multiple servers to ensure no single server is overwhelmed."
+    variant: "Bamboo is the fastest-growing plant on Earth, with some species capable of growing up to 91 centimeters in a single day."
+    expected: unrelated
+
+  - original: "The aurora borealis is caused by charged particles from the sun interacting with gases in Earth's magnetic field near the poles."
+    variant: "In baseball, a perfect game occurs when a pitcher faces the minimum 27 batters without any reaching base."
+    expected: unrelated
+
+  - original: "Bread flour has a higher protein content than all-purpose flour, which produces more gluten and gives bread its chewy texture."
+    variant: "The Hubble Space Telescope orbits Earth at an altitude of about 547 kilometers and has been operational since 1990."
+    expected: unrelated
+
+  - original: "The Meiji Restoration of 1868 transformed Japan from a feudal society into a modern industrialized nation within a few decades."
+    variant: "OAuth 2.0 is an authorization framework that allows third-party applications to obtain limited access to a user's account on an HTTP service."
+    expected: unrelated
+
+  - original: "Tardigrades, also known as water bears, can survive extreme conditions including the vacuum of outer space and temperatures near absolute zero."
+    variant: "A hat trick in hockey means a single player has scored three goals in one game."
+    expected: unrelated
+
+  - original: "The FIFA World Cup is held every four years and is the most widely viewed sporting event in the world."
+    variant: "Sourdough starter is a mixture of flour and water that captures wild yeast from the environment through regular feeding over several days."
+    expected: unrelated
+
+  - original: "The speed of light in a vacuum is approximately 299,792,458 meters per second, a fundamental constant of physics."
+    variant: "Florence Nightingale pioneered modern nursing practices during the Crimean War by emphasizing hygiene, sanitation, and systematic patient care."
+    expected: unrelated
+
+  - original: "Pickling preserves food by submerging it in an acidic solution, typically vinegar, which inhibits the growth of spoilage bacteria."
+    variant: "Kubernetes pods are the smallest deployable units and can contain one or more containers that share storage and network resources."
+    expected: unrelated
+
+  - original: "The Inca Empire, centered in Peru, was the largest empire in pre-Columbian America and built the famous citadel of Machu Picchu."
+    variant: "Elephants are the only animals that cannot jump, but they can communicate through seismic vibrations felt through their feet."
+    expected: unrelated
+
+  - original: "React uses a virtual DOM to efficiently update only the parts of the UI that have changed, minimizing costly direct DOM manipulations."
+    variant: "The 1996 Chicago Bulls set an NBA record with 72 wins in a single regular season."
+    expected: unrelated
+
+  - original: "Cheetahs can accelerate from zero to 60 miles per hour in about three seconds, making them the fastest land animals."
+    variant: "A database index speeds up queries by creating a sorted data structure that allows the database engine to find rows without scanning the entire table."
+    expected: unrelated
+
+  - original: "In curling, players slide polished granite stones across a sheet of ice toward a circular target called the house."
+    variant: "The Doppler effect explains why the pitch of a siren seems higher as it approaches and lower as it moves away."
+    expected: unrelated
+
+  - original: "The combustion engine converts chemical energy stored in fuel into mechanical energy through a series of controlled explosions."
+    variant: "Sushi rice is seasoned with a mixture of rice vinegar, sugar, and salt after cooking to give it its distinctive flavor."
+    expected: unrelated
+
+  - original: "Cleopatra ruled Egypt as the last active pharaoh of the Ptolemaic Kingdom before it was absorbed by the Roman Empire."
+    variant: "The ping command sends ICMP echo request packets to a target host and measures the round-trip time of responses."
+    expected: unrelated
+
+  - original: "Mangrove forests grow in coastal saline water and serve as critical nurseries for many species of fish and crustaceans."
+    variant: "The decathlon consists of ten track and field events contested over two consecutive days."
+    expected: unrelated
+
+  - original: "A function is considered pure if it always returns the same output for the same input and produces no side effects."
+    variant: "Cinnamon is harvested from the inner bark of trees in the genus Cinnamomum, primarily grown in Sri Lanka and Southeast Asia."
+    expected: unrelated
+
+  - original: "The Voyager 1 spacecraft, launched in 1977, is the most distant human-made object, now traveling in interstellar space."
+    variant: "In rugby, a try is scored by grounding the ball in the opposing team's in-goal area and is worth five points."
+    expected: unrelated
+
+  - original: "Tiger Woods has won the Masters Tournament five times, tying the record held by Jack Nicklaus."
+    variant: "Stalactites form on the ceiling of caves when mineral-rich water drips down and slowly deposits calcium carbonate over thousands of years."
+    expected: unrelated
+
+  - original: "Braising involves searing meat at high heat and then slowly cooking it in a covered pot with a small amount of liquid."
+    variant: "The Large Hadron Collider, located near Geneva, is the world's largest and most powerful particle accelerator."
+    expected: unrelated
+
+  - original: "The Renaissance began in Italy in the 14th century and spread across Europe, reviving interest in classical art, science, and philosophy."
+    variant: "DNS translates human-readable domain names like example.com into numerical IP addresses that computers use to locate each other on the network."
+    expected: unrelated
+
+  - original: "Redis is an in-memory data structure store often used as a cache, message broker, and session store due to its sub-millisecond response times."
+    variant: "The platypus is one of only five species of monotremes, mammals that lay eggs instead of giving birth to live young."
+    expected: unrelated
+
+  - original: "Snowflakes form when water vapor in the atmosphere freezes directly into ice crystals around tiny particles of dust or pollen."
+    variant: "Michael Jordan won six NBA championships with the Chicago Bulls and was named Finals MVP in each of those victories."
+    expected: unrelated
+
+  - original: "Poaching eggs in gently simmering water with a splash of vinegar helps the whites coagulate quickly around the yolk."
+    variant: "The Panama Canal, completed in 1914, allows ships to pass between the Atlantic and Pacific Oceans without rounding South America."
+    expected: unrelated
+
+  - original: "Alan Turing's work on the Enigma machine during World War II is credited with shortening the war by an estimated two years."
+    variant: "Hummingbirds can flap their wings up to 80 times per second and are the only birds capable of sustained hovering."
+    expected: unrelated
+
+  - original: "CAP theorem states that a distributed system can guarantee at most two of three properties: consistency, availability, and partition tolerance."
+    variant: "The Dead Sea, at 430 meters below sea level, is the lowest point on Earth's surface."
+    expected: unrelated
+
+  - original: "The Wimbledon Championships, held annually since 1877, is the oldest tennis tournament in the world and the only Grand Slam played on grass."
+    variant: "Photovoltaic cells convert sunlight directly into electricity using semiconductor materials, most commonly crystalline silicon."
+    expected: unrelated

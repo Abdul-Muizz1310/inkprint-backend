@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C2PA v2.2 Content Credential (inkprint subset)",
+  "description": "JSON Schema for inkprint's C2PA-aligned manifest. Validates the subset of C2PA v2.2 that inkprint produces.",
+  "type": "object",
+  "required": ["@context", "version", "instance_id", "format", "claim_generator", "assertions", "signature"],
+  "properties": {
+    "@context": {
+      "type": "string",
+      "const": "https://c2pa.org/statements/v1"
+    },
+    "version": {
+      "type": "string",
+      "const": "2.2"
+    },
+    "title": {
+      "type": "string"
+    },
+    "instance_id": {
+      "type": "string",
+      "pattern": "^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "format": {
+      "type": "string"
+    },
+    "claim_generator": {
+      "type": "string"
+    },
+    "claim_generator_info": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "version"],
+        "properties": {
+          "name": { "type": "string" },
+          "version": { "type": "string" }
+        }
+      }
+    },
+    "legal_notice": {
+      "type": "string"
+    },
+    "assertions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["label", "data"],
+        "properties": {
+          "label": { "type": "string" },
+          "data": { "type": "object" }
+        }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "required": ["alg", "key_id", "value"],
+      "properties": {
+        "alg": { "type": "string" },
+        "key_id": { "type": "string" },
+        "value": { "type": "string" },
+        "signed_assertions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

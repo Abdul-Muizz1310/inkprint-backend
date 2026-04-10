@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
+
 from inkprint.leak.scanner import scan, validate_corpora
 
 # ── Happy path ───────────────────────────────────────────────────────────────
@@ -30,11 +31,12 @@ class TestLeakScannerHappy:
             patch("inkprint.leak.scanner.get_certificate_simhash", AsyncMock(return_value=42)),
             patch("inkprint.leak.scanner.save_scan", AsyncMock()),
         ):
-            async for event in scan(
+            stream = await scan(
                 certificate_id=uuid4(),
                 corpora=["common_crawl", "huggingface"],
                 stream=True,
-            ):
+            )
+            async for event in stream:
                 events.append(event)
 
         corpus_events = [e for e in events if e.get("type") == "corpus_complete"]
@@ -145,8 +147,7 @@ class TestLeakScannerFailure:
 
 
 class TestLeakScannerValidation:
-    def test_tc_l_16_non_uuid_rejected(self):
-        """TC-L-16: Non-UUID certificate_id is caught at validation."""
-        with pytest.raises((TypeError, ValueError)):
-            validate_corpora(["common_crawl"])  # This is fine
-            # The UUID validation happens at the API layer (tested in test_api)
+    def test_tc_l_16_invalid_corpus_rejected(self):
+        """TC-L-16: Unknown corpus name is rejected at validation."""
+        with pytest.raises(ValueError, match="Unknown corpus"):
+            validate_corpora(["common_crawl", "nonexistent"])

@@ -3,7 +3,9 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import jsonschema
 import pytest
+
 from inkprint.provenance.manifest import build_manifest, validate_manifest
 
 
@@ -159,5 +161,5 @@ class TestManifestFailure:
     def test_tc_m_16_invalid_manifest_fails_validation(self):
         """TC-M-16: Hand-crafted invalid manifest (missing @context) fails validation."""
         invalid = {"version": "2.2", "title": "bad"}
-        with pytest.raises((ValueError, KeyError)):
+        with pytest.raises(jsonschema.ValidationError):
             validate_manifest(invalid)
