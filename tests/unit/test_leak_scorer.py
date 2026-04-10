@@ -1,6 +1,7 @@
 """Tests for inkprint.leak.score — spec 04-leak-scanner.md (scoring logic)."""
 
 import pytest
+
 from inkprint.leak.score import score
 
 

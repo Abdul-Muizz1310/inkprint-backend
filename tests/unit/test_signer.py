@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 from inkprint.core.keys import load_signing_keys
 from inkprint.provenance.signer import sign, verify
 

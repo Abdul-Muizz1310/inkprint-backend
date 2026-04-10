@@ -4,6 +4,7 @@ These are slow and hit external APIs. Run only in CI nightly or manually.
 """
 
 import pytest
+
 from inkprint.leak.common_crawl import scan_common_crawl
 
 pytestmark = [pytest.mark.slow, pytest.mark.integration]

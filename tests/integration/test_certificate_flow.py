@@ -11,6 +11,7 @@ from uuid import uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+
 from inkprint.main import app
 
 pytestmark = pytest.mark.integration

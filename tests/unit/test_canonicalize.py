@@ -1,6 +1,7 @@
 """Tests for inkprint.provenance.canonicalize — spec 00-canonicalize.md."""
 
 import pytest
+
 from inkprint.provenance.canonicalize import canonicalize
 
 # ── Happy path ───────────────────────────────────────────────────────────────
