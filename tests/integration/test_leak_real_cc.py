@@ -3,6 +3,7 @@
 These are slow and hit external APIs. Run only in CI nightly or manually.
 """
 
+import httpx
 import pytest
 
 from inkprint.leak.common_crawl import scan_common_crawl
@@ -10,8 +11,22 @@ from inkprint.leak.common_crawl import scan_common_crawl
 pytestmark = [pytest.mark.slow, pytest.mark.integration]
 
 
+def _cdx_reachable() -> bool:
+    """Check whether Common Crawl CDX API is reachable."""
+    try:
+        resp = httpx.get(
+            "https://index.commoncrawl.org/CC-MAIN-2024-50-index",
+            params={"url": "example.com", "output": "json", "limit": "1"},
+            timeout=10.0,
+        )
+        return resp.status_code == 200
+    except (httpx.HTTPError, httpx.TimeoutException, OSError):
+        return False
+
+
 class TestRealCommonCrawl:
     @pytest.mark.asyncio
+    @pytest.mark.skipif(not _cdx_reachable(), reason="Common Crawl CDX API unreachable")
     async def test_tc_l_01_known_wikipedia_lead(self):
         """TC-L-01: Known Wikipedia lead returns >= 1 hit from Common Crawl."""
         # Albert Einstein's Wikipedia opening paragraph — guaranteed in CC.
