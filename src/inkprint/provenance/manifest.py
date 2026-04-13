@@ -23,7 +23,8 @@ LEGAL_NOTICE = (
 @functools.lru_cache(maxsize=1)
 def _load_schema() -> dict[str, Any]:
     with open(_SCHEMA_PATH) as f:
-        return json.load(f)
+        result: dict[str, Any] = json.load(f)
+        return result
 
 
 def build_manifest(
