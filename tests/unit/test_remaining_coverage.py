@@ -237,7 +237,9 @@ class TestSearchCertificates:
             json={"text": "unique searchable text", "author": "author@test.com"},
         )
 
-        resp = await client.get("/search", params={"text": "unique searchable text", "mode": "exact"})
+        resp = await client.get(
+            "/search", params={"text": "unique searchable text", "mode": "exact"}
+        )
         assert resp.status_code == 200
         body = resp.json()
         assert body["total"] >= 1

@@ -9,7 +9,7 @@ import hashlib
 import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -17,7 +17,6 @@ import respx
 
 from inkprint.fingerprint.compare import _cosine_similarity, _verdict, compare
 from inkprint.leak.score import score
-
 
 # ── leak/huggingface.py ─────────────────────────────────────────────────────
 
@@ -326,7 +325,9 @@ class TestCertificateServiceEdges:
 
         # compute_embedding is imported inside create_certificate, so patch it
         # at the source module level
-        with patch("inkprint.fingerprint.embed.compute_embedding", side_effect=Exception("no api key")):
+        with patch(
+            "inkprint.fingerprint.embed.compute_embedding", side_effect=Exception("no api key")
+        ):
             with patch("langdetect.detect", side_effect=Exception("detection failed")):
                 result = await create_certificate(
                     text="x",
@@ -406,9 +407,7 @@ class TestVersionEndpoint:
 
         from inkprint.main import app
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/version")
         assert resp.status_code == 200
         data = resp.json()
@@ -624,9 +623,7 @@ class TestCertificateRouterEdges:
 
         from inkprint.main import app
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get(f"/certificates/{uuid4()}/manifest")
         assert resp.status_code == 404
 
@@ -637,9 +634,7 @@ class TestCertificateRouterEdges:
 
         from inkprint.main import app
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get(f"/certificates/{uuid4()}/qr")
         assert resp.status_code == 404
 
@@ -650,9 +645,7 @@ class TestCertificateRouterEdges:
 
         from inkprint.main import app
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get(f"/certificates/{uuid4()}/download")
         assert resp.status_code == 404
 
@@ -670,9 +663,7 @@ class TestLeakRouterEdges:
 
         from inkprint.main import app
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get(f"/leak-scan/{uuid4()}")
         assert resp.status_code == 404
 
@@ -683,9 +674,7 @@ class TestLeakRouterEdges:
 
         from inkprint.main import app
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get(f"/leak-scan/{uuid4()}/stream")
         assert resp.status_code == 404
 
@@ -741,7 +730,9 @@ class TestDbCoverage:
         db_mod._session_factory = None
 
         with patch("inkprint.core.db.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(database_url="postgresql+asyncpg://localhost/test")
+            mock_settings.return_value = MagicMock(
+                database_url="postgresql+asyncpg://localhost/test"
+            )
             with patch("inkprint.core.db.create_async_engine") as mock_create:
                 mock_create.return_value = MagicMock()
                 engine = db_mod.get_engine()
@@ -847,7 +838,9 @@ class TestKeysCoverage:
 
         # Still use valid Ed25519 public key to avoid early failure
         ed_key = Ed25519PrivateKey.generate()
-        ed_pub_pem = ed_key.public_key().public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo)
+        ed_pub_pem = ed_key.public_key().public_bytes(
+            Encoding.PEM, PublicFormat.SubjectPublicKeyInfo
+        )
 
         env = {
             "INKPRINT_SIGNING_KEY_PRIVATE": base64.b64encode(rsa_priv_pem).decode(),
@@ -1074,8 +1067,18 @@ class TestLeakEvalCoverage:
             call_count += 1
             # First 20 = known_leaked entries (all hit), 21st = first clean entry (also hit)
             if call_count <= 21:
-                return {"corpus": "common_crawl", "hits": [{"url": "x"}], "hit_count": 1, "snapshot": "CC-MAIN-2024-50"}
-            return {"corpus": "common_crawl", "hits": [], "hit_count": 0, "snapshot": "CC-MAIN-2024-50"}
+                return {
+                    "corpus": "common_crawl",
+                    "hits": [{"url": "x"}],
+                    "hit_count": 1,
+                    "snapshot": "CC-MAIN-2024-50",
+                }
+            return {
+                "corpus": "common_crawl",
+                "hits": [],
+                "hit_count": 0,
+                "snapshot": "CC-MAIN-2024-50",
+            }
 
         with patch("inkprint.evals.leak_eval.scan_common_crawl", mock_scan):
             from inkprint.evals.leak_eval import evaluate_leak_probe

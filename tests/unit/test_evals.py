@@ -136,7 +136,7 @@ class TestLeakEvalData:
 
             result = evaluate_leak_probe()
         else:
-            from unittest.mock import AsyncMock, patch
+            from unittest.mock import patch
 
             call_count = 0
 
@@ -145,7 +145,11 @@ class TestLeakEvalData:
                 call_count += 1
                 # First 20 calls are known-leaked → return hits
                 if call_count <= 20:
-                    return {"corpus": "common_crawl", "hits": [{"url": "http://mock"}], "hit_count": 1}
+                    return {
+                        "corpus": "common_crawl",
+                        "hits": [{"url": "http://mock"}],
+                        "hit_count": 1,
+                    }
                 # Next 20 calls are clean → no hits
                 return {"corpus": "common_crawl", "hits": [], "hit_count": 0}
 
