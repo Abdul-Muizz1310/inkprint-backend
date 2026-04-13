@@ -6,10 +6,13 @@ import voyageai
 
 
 async def compute_embedding(text: str) -> list[float]:
-    """Compute a 768-dimensional embedding using Voyage AI.
+    """Compute an embedding using Voyage AI.
 
     Uses the configured model (default: voyage-3-lite).
     """
+    from inkprint.core.config import get_settings
+
+    settings = get_settings()
     client = voyageai.AsyncClient()  # type: ignore[attr-defined]
-    result = await client.embed([text], model="voyage-3-lite")
+    result = await client.embed([text], model=settings.voyage_model)
     return list(result.embeddings[0])

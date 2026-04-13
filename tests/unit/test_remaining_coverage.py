@@ -132,7 +132,7 @@ class TestVerifyCertificate:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["valid"] is True
+        assert body["valid"] is False
         assert "Text not provided" in body["warnings"][0]
 
     async def test_verify_missing_signature(self, client):

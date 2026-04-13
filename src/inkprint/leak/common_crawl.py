@@ -7,7 +7,14 @@ from typing import Any
 
 import httpx
 
-CDX_RATE_LIMIT = asyncio.Semaphore(1)  # max 1 req/s
+_CDX_RATE_LIMIT: asyncio.Semaphore | None = None
+
+
+def _get_rate_limit() -> asyncio.Semaphore:
+    global _CDX_RATE_LIMIT
+    if _CDX_RATE_LIMIT is None:
+        _CDX_RATE_LIMIT = asyncio.Semaphore(1)
+    return _CDX_RATE_LIMIT
 
 
 async def scan_common_crawl(
@@ -24,7 +31,7 @@ async def scan_common_crawl(
     if not query_text:
         return {"corpus": "common_crawl", "hits": [], "hit_count": 0, "snapshot": "CC-MAIN-2024-50"}
 
-    async with CDX_RATE_LIMIT:
+    async with _get_rate_limit():
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.get(

@@ -2,24 +2,31 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
 from fastapi import FastAPI, Request, Response
 from starlette.middleware.cors import CORSMiddleware
 
-ALLOWED_ORIGINS = [
+_PROD_ORIGINS = [
     "https://inkprint-frontend.vercel.app",
     "https://bastion.vercel.app",
-    "http://localhost:3000",
 ]
+
+
+def _get_allowed_origins() -> list[str]:
+    origins = list(_PROD_ORIGINS)
+    if os.environ.get("APP_ENV", "development") != "production":
+        origins.append("http://localhost:3000")
+    return origins
 
 
 def add_middleware(app: FastAPI) -> None:
     """Attach all middleware to the FastAPI app."""
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=ALLOWED_ORIGINS,
+        allow_origins=_get_allowed_origins(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

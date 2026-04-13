@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 from datetime import datetime
 from pathlib import Path
@@ -11,7 +12,6 @@ from uuid import UUID
 import jsonschema
 
 _SCHEMA_PATH = Path(__file__).parent / "c2pa_schema.json"
-_SCHEMA: dict[str, Any] | None = None
 
 LEGAL_NOTICE = (
     "This certificate is issued by inkprint for informational purposes only. "
@@ -20,12 +20,10 @@ LEGAL_NOTICE = (
 )
 
 
+@functools.lru_cache(maxsize=1)
 def _load_schema() -> dict[str, Any]:
-    global _SCHEMA
-    if _SCHEMA is None:
-        with open(_SCHEMA_PATH) as f:
-            _SCHEMA = json.load(f)
-    return _SCHEMA
+    with open(_SCHEMA_PATH) as f:
+        return json.load(f)
 
 
 def build_manifest(

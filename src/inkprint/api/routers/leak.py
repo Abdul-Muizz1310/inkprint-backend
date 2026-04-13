@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from typing import Any
 from uuid import UUID
@@ -47,6 +48,6 @@ async def stream_leak_scan(scan_id: UUID) -> StreamingResponse:
         raise HTTPException(status_code=404, detail="Scan not found")
 
     async def event_generator() -> AsyncIterator[str]:
-        yield f"data: {{'scan_id': '{scan_id}', 'status': '{record['status']}'}}\n\n"
+        yield f"data: {json.dumps({'scan_id': str(scan_id), 'status': record['status']})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

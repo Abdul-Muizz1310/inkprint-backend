@@ -123,16 +123,15 @@ async def scan(
     if stream:
         return _stream_scan(tasks)
 
-    results = []
-    for name, factory, args in tasks:
-        result = await _run_corpus(name, factory, args)
-        results.append(result)
+    results = await asyncio.gather(
+        *(_run_corpus(name, factory, args) for name, factory, args in tasks)
+    )
 
     all_hits: list[dict[str, Any]] = []
     for r in results:
         all_hits.extend(r.get("hits", []))
 
-    scan_result = ScanResult(corpus_results=results, score=score(all_hits))
+    scan_result = ScanResult(corpus_results=list(results), score=score(all_hits))
     await save_scan(scan_result)
     return scan_result
 

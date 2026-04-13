@@ -124,7 +124,6 @@ def verify_certificate(
     # Check signature
     sig_block = manifest.get("signature", {})
     sig_value = sig_block.get("value", "")
-    signed_assertions = sig_block.get("signed_assertions", [])
 
     # Build the data that was signed: the canonical hash from the manifest
     hash_assertion = None
@@ -135,18 +134,17 @@ def verify_certificate(
 
     if hash_assertion and sig_value:
         manifest_hash = hash_assertion["data"]["hash"]
-        # Verify signature over canonical content — we need the original canonical bytes
-        # The signature was over canonicalize(text). If text is provided, verify fully.
         if text is not None:
             canonical = canonicalize(text)
             content_hash = hashlib.sha256(canonical).hexdigest()
             checks["hash"] = content_hash == manifest_hash
             checks["signature"] = verify(canonical, sig_value, public_key)
         else:
-            # Without text, we can only check structural validity
-            checks["signature"] = bool(sig_value and signed_assertions)
-            checks["hash"] = True  # Can't verify without text
-            warnings.append("Text not provided; hash check skipped")
+            # Without original text, cryptographic verification is impossible.
+            # Never report valid=True without actual crypto verification.
+            checks["signature"] = False
+            checks["hash"] = False
+            warnings.append("Text not provided; cannot verify signature or hash")
     else:
         checks["signature"] = False
         checks["hash"] = False

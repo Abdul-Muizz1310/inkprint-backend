@@ -13,7 +13,7 @@ SERVICE_NAME = "inkprint"
 
 def configure_logging() -> None:
     """Set up standard Python logging with JSON-friendly format in prod."""
-    is_prod = os.environ.get("ENVIRONMENT", "development") == "production"
+    is_prod = os.environ.get("APP_ENV", "development") == "production"
 
     if is_prod:
         fmt = (
