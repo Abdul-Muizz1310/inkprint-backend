@@ -12,7 +12,11 @@ from inkprint.core.config import get_settings
 def _get_client() -> Any:
     """Get a boto3 S3 client configured for R2."""
     settings = get_settings()
-    if not settings.r2_endpoint or not settings.r2_access_key_id or not settings.r2_secret_access_key:
+    if (
+        not settings.r2_endpoint
+        or not settings.r2_access_key_id
+        or not settings.r2_secret_access_key
+    ):
         return None
     return boto3.client(
         "s3",
