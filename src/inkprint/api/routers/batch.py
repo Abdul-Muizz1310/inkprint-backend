@@ -44,8 +44,7 @@ async def create_certificates_batch(
     private_key, public_key, key_id = _get_keys(request)
 
     items_as_dicts: list[dict[str, Any]] = [
-        {"text": it.text, "author": it.author, "metadata": it.metadata}
-        for it in body.items
+        {"text": it.text, "author": it.author, "metadata": it.metadata} for it in body.items
     ]
 
     try:
@@ -56,9 +55,7 @@ async def create_certificates_batch(
             key_id=key_id,
         )
     except EmbeddingServiceUnavailableError as exc:
-        raise HTTPException(
-            status_code=503, detail="Embedding service unavailable"
-        ) from exc
+        raise HTTPException(status_code=503, detail="Embedding service unavailable") from exc
 
     return BatchCertificateResponse(
         certificates=[
@@ -83,6 +80,4 @@ async def verify_certificates_batch(
         {"certificate_id": it.certificate_id, "text": it.text} for it in body.items
     ]
     service_results = await verify_batch(items_as_dicts, public_key=public_key)
-    return BatchVerifyResponse(
-        results=[BatchVerifyItemResult(**r) for r in service_results]
-    )
+    return BatchVerifyResponse(results=[BatchVerifyItemResult(**r) for r in service_results])

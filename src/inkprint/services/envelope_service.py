@@ -93,9 +93,7 @@ def create_envelope(
         )
         if existing["_fingerprint"] == new_fp:
             return existing
-        raise EnvelopeConflictError(
-            "Dossier already envelope-signed with different bundle"
-        )
+        raise EnvelopeConflictError("Dossier already envelope-signed with different bundle")
 
     # 3. Build canonical bytes and sign.
     issued_at = datetime.now(UTC)

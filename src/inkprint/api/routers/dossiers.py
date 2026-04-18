@@ -21,9 +21,7 @@ def _get_signing(request: Request) -> tuple[Any, str]:
 
 
 @router.post("/dossiers/envelope", status_code=200, response_model=EnvelopeResponse)
-async def create_dossier_envelope(
-    body: EnvelopeRequest, request: Request
-) -> EnvelopeResponse:
+async def create_dossier_envelope(body: EnvelopeRequest, request: Request) -> EnvelopeResponse:
     """Build, sign, and persist a dossier envelope manifest."""
     private_key, key_id = _get_signing(request)
 

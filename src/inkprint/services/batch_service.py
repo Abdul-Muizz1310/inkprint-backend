@@ -164,9 +164,7 @@ async def verify_batch(
 
         stored_canonical = canonicalize(record["text"])
         checks["signature"] = verify(stored_canonical, record["signature"], public_key)
-        checks["hash"] = (
-            hashlib.sha256(stored_canonical).hexdigest() == record["content_hash"]
-        )
+        checks["hash"] = hashlib.sha256(stored_canonical).hexdigest() == record["content_hash"]
 
         if supplied_text is not None:
             supplied_simhash = compute_simhash(supplied_text)

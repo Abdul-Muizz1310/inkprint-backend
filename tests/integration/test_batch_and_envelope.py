@@ -149,9 +149,7 @@ class TestBatchCreateCertificates:
         )
         assert resp.status_code == 422
 
-    async def test_tc_b_10_embedding_failure_rolls_back(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_tc_b_10_embedding_failure_rolls_back(self, client: AsyncClient) -> None:
         """TC-B-10: Embedding API failure mid-batch → 503 with no commits."""
         baseline = len(certificate_service._certificates)
         call_count = {"n": 0}
@@ -327,9 +325,7 @@ class TestDossierEnvelope:
         )
         assert resp.status_code == 422
 
-    async def test_tc_b_18_idempotency_and_conflict(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_tc_b_18_idempotency_and_conflict(self, client: AsyncClient) -> None:
         """TC-B-18: Same dossier_id + same bundle → idempotent 200; different bundle → 409."""
         evidence = await _create_three_certs(client)
         dossier_id = str(uuid4())
@@ -374,9 +370,7 @@ class TestVerifyBatch:
             assert "simhash" not in r["checks"]
             assert "embedding" not in r["checks"]
 
-    async def test_tc_b_20_tampered_text_fails_fingerprints(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_tc_b_20_tampered_text_fails_fingerprints(self, client: AsyncClient) -> None:
         """TC-B-20: valid cert + cert with modified text — second fails simhash + embedding."""
         # Create two certs with distinct text. For test determinism:
         create = await client.post(
@@ -385,9 +379,7 @@ class TestVerifyBatch:
                 "items": [
                     {"text": "alpha beta gamma delta epsilon", "author": "a@b.com"},
                     {
-                        "text": (
-                            "the rain in spain falls mainly on the plain"
-                        ),
+                        "text": ("the rain in spain falls mainly on the plain"),
                         "author": "a@b.com",
                     },
                 ]
@@ -434,9 +426,7 @@ class TestVerifyBatch:
         assert results[1]["checks"]["embedding"] is False
         assert results[1]["valid"] is False
 
-    async def test_tc_b_21_unknown_cert_fails_softly(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_tc_b_21_unknown_cert_fails_softly(self, client: AsyncClient) -> None:
         """TC-B-21: Unknown cert id returns valid=false with reason; others pass."""
         evidence = await _create_three_certs(client)
         unknown = str(uuid4())
