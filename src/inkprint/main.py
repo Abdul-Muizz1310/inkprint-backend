@@ -15,8 +15,10 @@ from cryptography.hazmat.primitives.serialization import (
 )
 from fastapi import FastAPI
 
+from inkprint.api.routers.batch import router as batch_router
 from inkprint.api.routers.certificates import router as certificates_router
 from inkprint.api.routers.diff import router as diff_router
+from inkprint.api.routers.dossiers import router as dossiers_router
 from inkprint.api.routers.leak import router as leak_router
 from inkprint.api.routers.search import router as search_router
 from inkprint.api.routers.verify import router as verify_router
@@ -73,6 +75,8 @@ def create_app() -> FastAPI:
     # Routers
     application.include_router(health_router)
     application.include_router(certificates_router)
+    application.include_router(batch_router)
+    application.include_router(dossiers_router)
     application.include_router(verify_router)
     application.include_router(diff_router)
     application.include_router(leak_router)
