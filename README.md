@@ -307,8 +307,8 @@ uv run pytest --cov=src/inkprint --cov-report=term-missing
 
 | Metric | Value |
 |---|---|
-| **Test count** | 183 tests |
-| **Line coverage** | **100%** |
+| **Test count** | 250 tests |
+| **Line coverage** | **99%** |
 | **Eval: fingerprint (SimHash-only)** | **86%** (86/100, target >= 85%) |
 | **Eval: fingerprint (SimHash + embedding)** | **>= 90%** (target >= 90%) |
 | **Eval: tamper resilience** | **100%** (50/50) |
