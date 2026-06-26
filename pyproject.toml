@@ -95,3 +95,6 @@ markers = [
     "slow: slow end-to-end tests (CI-only)",
     "integration: requires Testcontainers / real Postgres",
 ]
+
+[tool.coverage.report]
+fail_under = 80
