@@ -98,5 +98,11 @@ markers = [
     "integration: requires Testcontainers / real Postgres",
 ]
 
+[tool.coverage.run]
+# SQLAlchemy's async layer runs DB work via greenlets, and aiosqlite uses a
+# worker thread; without this, coverage misses lines executed across those
+# context switches (e.g. async route handlers driven through ASGITransport).
+concurrency = ["thread", "greenlet"]
+
 [tool.coverage.report]
 fail_under = 80

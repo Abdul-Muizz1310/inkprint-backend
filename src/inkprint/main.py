@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -54,6 +56,21 @@ def _load_keys() -> tuple[Any, Any, str]:
     return private_key, public_key, key_id
 
 
+@asynccontextmanager
+async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+    """On startup, create the schema for local SQLite runs.
+
+    Postgres deployments manage their schema with Alembic (including the
+    pgvector migration), so auto-create is restricted to SQLite — the
+    zero-config local default.
+    """
+    from inkprint.core.db import get_engine, init_models
+
+    if get_engine().dialect.name == "sqlite":
+        await init_models()
+    yield
+
+
 def create_app() -> FastAPI:
     """Build and return the FastAPI application."""
     settings = Settings()
@@ -62,6 +79,7 @@ def create_app() -> FastAPI:
         title="inkprint",
         version="0.1.0",
         description="Content provenance and AI-training-data leak detection",
+        lifespan=lifespan,
     )
 
     # Load signing keys

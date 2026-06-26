@@ -61,7 +61,7 @@ def get_envelope(dossier_id: str) -> dict[str, Any] | None:
     return _envelopes.get(dossier_id)
 
 
-def create_envelope(
+async def create_envelope(
     *,
     dossier_id: UUID,
     evidence_cert_ids: list[UUID],
@@ -76,10 +76,15 @@ def create_envelope(
     Raises UnknownCertificateError on missing evidence cert, or
     EnvelopeConflictError when a different bundle was already signed for the
     same dossier_id. Re-submitting identical inputs returns the stored record.
+
+    Note: evidence certs are validated against the DB-backed certificate
+    repository, but the envelope record itself is still held in the in-memory
+    ``_envelopes`` store. Moving it onto the ``dossier_envelopes`` table (the
+    ORM model already exists) is the remaining persistence follow-up.
     """
     # 1. Validate all evidence cert ids exist.
     for cid in evidence_cert_ids:
-        if certificate_service.get_certificate(str(cid)) is None:
+        if await certificate_service.get_certificate(str(cid)) is None:
             raise UnknownCertificateError(cid)
 
     # 2. Idempotency / conflict check.

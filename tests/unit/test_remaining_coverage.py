@@ -15,7 +15,9 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from inkprint.main import app
-from inkprint.services import certificate_service, leak_service
+
+# Per-test DB isolation is provided by the autouse `db_tables` fixture in
+# tests/conftest.py — each test gets a fresh in-memory schema.
 
 
 @pytest.fixture()
@@ -26,16 +28,6 @@ async def client():
         base_url="http://test",
     ) as c:
         yield c
-
-
-@pytest.fixture(autouse=True)
-def _clean_stores():
-    """Reset in-memory stores before and after each test."""
-    certificate_service.reset_store()
-    leak_service.reset_store()
-    yield
-    certificate_service.reset_store()
-    leak_service.reset_store()
 
 
 # ── platform/health.py ──────────────────────────────────────────────────────
@@ -262,19 +254,55 @@ class TestSearchCertificates:
         assert body["total"] == 0
 
     async def test_search_semantic(self, client):
-        """Cover certificate_service.py:215-217 — semantic mode."""
+        """Semantic mode ranks by cosine; with no embedding backend the query
+        vector is zero, so nothing ranks and results are empty."""
         resp = await client.get("/search", params={"text": "anything", "mode": "semantic"})
         assert resp.status_code == 200
         body = resp.json()
-        assert body["total"] == 0  # Not implemented yet
+        assert body["total"] == 0
+
+    async def test_search_semantic_ranks_when_embeddings_present(self, client):
+        """With real (injected) embeddings, semantic search returns the closest
+        certificate first."""
+
+        async def fake_embed(text: str) -> list[float]:
+            if "alpha" in text:
+                return [1.0, 0.0, 0.0] + [0.0] * 765
+            if "beta" in text:
+                return [0.0, 1.0, 0.0] + [0.0] * 765
+            return [0.97, 0.02, 0.0] + [0.0] * 765  # a query closest to "alpha"
+
+        with patch(
+            "inkprint.fingerprint.embed.compute_embedding",
+            new=AsyncMock(side_effect=fake_embed),
+        ):
+            alpha = await client.post(
+                "/certificates", json={"text": "alpha document", "author": "a@b.com"}
+            )
+            await client.post("/certificates", json={"text": "beta document", "author": "a@b.com"})
+            resp = await client.get(
+                "/search", params={"text": "find alpha-like", "mode": "semantic"}
+            )
+
+        body = resp.json()
+        assert body["total"] >= 1
+        assert body["results"][0]["id"] == alpha.json()["id"]
 
 
 # ── services/leak_service.py ─────────────────────────────────────────────────
 
 
 class TestLeakService:
+    @pytest.fixture(autouse=True)
+    def _stub_background_scan(self):
+        """Keep the leak background task offline: the endpoint schedules
+        run_scan, which would otherwise hit live corpora. Completion + DB
+        persistence are verified directly in test_leak_service.py."""
+        with patch("inkprint.services.leak_service.run_scan", new=AsyncMock(return_value=None)):
+            yield
+
     async def test_create_leak_scan(self, client):
-        """Cover leak_service.py:19-28 — create scan via API."""
+        """POST /leak-scan creates a pending job and returns 202."""
         # Create certificate first
         create_resp = await client.post(
             "/certificates",

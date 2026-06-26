@@ -44,7 +44,7 @@ async def get_certificate(cert_id: UUID) -> CertificateResponse:
     """Retrieve a certificate by ID."""
     from inkprint.services.certificate_service import get_certificate as svc_get
 
-    record = svc_get(str(cert_id))
+    record = await svc_get(str(cert_id))
     if record is None:
         raise HTTPException(status_code=404, detail="Certificate not found")
     return CertificateResponse(**{k: record[k] for k in CertificateResponse.model_fields})
@@ -55,7 +55,7 @@ async def get_manifest(cert_id: UUID) -> dict[str, Any]:
     """Retrieve the C2PA manifest for a certificate."""
     from inkprint.services.certificate_service import get_certificate as svc_get
 
-    record = svc_get(str(cert_id))
+    record = await svc_get(str(cert_id))
     if record is None:
         raise HTTPException(status_code=404, detail="Certificate not found")
     manifest: dict[str, Any] = record["manifest"]
@@ -67,7 +67,7 @@ async def get_qr(cert_id: UUID) -> Response:
     """Generate a QR code PNG for the certificate."""
     from inkprint.services.certificate_service import get_certificate as svc_get
 
-    record = svc_get(str(cert_id))
+    record = await svc_get(str(cert_id))
     if record is None:
         raise HTTPException(status_code=404, detail="Certificate not found")
 
@@ -84,7 +84,7 @@ async def download_certificate(cert_id: UUID) -> Response:
     """Download the original text of a certificate."""
     from inkprint.services.certificate_service import get_certificate as svc_get
 
-    record = svc_get(str(cert_id))
+    record = await svc_get(str(cert_id))
     if record is None:
         raise HTTPException(status_code=404, detail="Certificate not found")
     return Response(

@@ -15,12 +15,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from inkprint.services import batch_service, certificate_service
 
-
-@pytest.fixture(autouse=True)
-def _clean() -> None:
-    certificate_service.reset_store()
-    yield
-    certificate_service.reset_store()
+# Per-test DB isolation is provided by the autouse `db_tables` fixture.
 
 
 @pytest.fixture()
@@ -43,13 +38,14 @@ class TestLangdetectFallback:
             ),
             patch("langdetect.detect", side_effect=RuntimeError("no features")),
         ):
-            await batch_service.create_batch(
+            created = await batch_service.create_batch(
                 [{"text": "short", "author": "a@b.com", "metadata": None}],
                 private_key=priv,
                 public_key=pub,  # type: ignore[arg-type]
                 key_id=kid,
             )
-        stored = next(iter(certificate_service._certificates.values()))
+        stored = await certificate_service.get_certificate(str(created[0]["certificate_id"]))
+        assert stored is not None
         assert stored["language"] is None
 
 

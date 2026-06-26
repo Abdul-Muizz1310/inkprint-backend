@@ -5,7 +5,6 @@ Targets 100% line coverage for every file in src/.
 
 from __future__ import annotations
 
-import hashlib
 import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -302,45 +301,38 @@ class TestCompareEdgeCases:
 
 
 class TestCertificateServiceEdges:
-    """Cover lines 25, 67-68, 151-152, 214 of certificate_service.py."""
-
-    def test_reset_store(self):
-        """reset_store clears the in-memory dict (line 25)."""
-        from inkprint.services.certificate_service import _certificates, reset_store
-
-        _certificates["fake"] = {"id": "fake"}
-        reset_store()
-        assert len(_certificates) == 0
+    """Cover certificate_service.py edge branches (langdetect, verify, search)."""
 
     @pytest.mark.asyncio
     async def test_create_certificate_langdetect_failure(self):
-        """When langdetect raises, language is set to None (lines 67-68)."""
+        """When langdetect raises, language is set to None."""
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-        from inkprint.services.certificate_service import create_certificate, reset_store
+        from inkprint.services.certificate_service import create_certificate
 
-        reset_store()
         priv = Ed25519PrivateKey.generate()
         pub = priv.public_key()
 
-        # compute_embedding is imported inside create_certificate, so patch it
-        # at the source module level
-        with patch(
-            "inkprint.fingerprint.embed.compute_embedding", side_effect=Exception("no api key")
+        # compute_embedding is imported inside the service, so patch the source.
+        with (
+            patch(
+                "inkprint.fingerprint.embed.compute_embedding",
+                side_effect=Exception("no api key"),
+            ),
+            patch("langdetect.detect", side_effect=Exception("detection failed")),
         ):
-            with patch("langdetect.detect", side_effect=Exception("detection failed")):
-                result = await create_certificate(
-                    text="x",
-                    author="test@test.com",
-                    metadata=None,
-                    private_key=priv,
-                    public_key=pub,
-                    key_id="test-key",
-                )
+            result = await create_certificate(
+                text="x",
+                author="test@test.com",
+                metadata=None,
+                private_key=priv,
+                public_key=pub,
+                key_id="test-key",
+            )
         assert result["language"] is None
 
     def test_verify_certificate_no_hash_assertion(self):
-        """Manifest with no hash assertion and no sig returns all-false (lines 151-152)."""
+        """Manifest with no hash assertion and no sig returns all-false."""
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
         from inkprint.services.certificate_service import verify_certificate
@@ -355,43 +347,14 @@ class TestCertificateServiceEdges:
         assert result["checks"]["signature"] is False
         assert result["checks"]["hash"] is False
 
-    def test_search_certificates_exact_match(self):
-        """search_certificates in exact mode finds a matching cert (line 214)."""
-        from inkprint.provenance.canonicalize import canonicalize
-        from inkprint.services.certificate_service import (
-            _certificates,
-            reset_store,
-            search_certificates,
-        )
-
-        reset_store()
-        text = "find me"
-        canonical = canonicalize(text)
-        content_hash = hashlib.sha256(canonical).hexdigest()
-        _certificates["abc"] = {
-            "id": "abc",
-            "author": "a@b.com",
-            "content_hash": content_hash,
-        }
-        result = search_certificates(text, mode="exact")
-        assert result["total"] == 1
-        assert result["results"][0]["id"] == "abc"
-        reset_store()
-
-    def test_search_certificates_exact_no_match(self):
-        """search_certificates in exact mode with no match returns empty."""
-        from inkprint.services.certificate_service import reset_store, search_certificates
-
-        reset_store()
-        result = search_certificates("nothing here", mode="exact")
-        assert result["total"] == 0
-
-    def test_search_certificates_semantic_returns_empty(self):
-        """search_certificates in semantic mode returns empty (no vector DB)."""
+    @pytest.mark.asyncio
+    async def test_search_unknown_mode_returns_empty(self):
+        """An unrecognized search mode returns no results."""
         from inkprint.services.certificate_service import search_certificates
 
-        result = search_certificates("anything", mode="semantic")
+        result = await search_certificates("anything", mode="nonsense")
         assert result["total"] == 0
+        assert result["results"] == []
 
 
 # ── platform/health.py ──────────────────────────────────────────────────────
@@ -434,34 +397,11 @@ class TestVersionEndpoint:
 
 
 class TestScannerCoverageGaps:
-    """Cover lines 47, 52, 57, 87, 115 of leak/scanner.py."""
-
-    @pytest.mark.asyncio
-    async def test_get_certificate_text_raises(self):
-        """get_certificate_text raises NotImplementedError (line 47)."""
-        from inkprint.leak.scanner import get_certificate_text
-
-        with pytest.raises(NotImplementedError, match="Wire to repository"):
-            await get_certificate_text(uuid4())
-
-    @pytest.mark.asyncio
-    async def test_get_certificate_simhash_raises(self):
-        """get_certificate_simhash raises NotImplementedError (line 52)."""
-        from inkprint.leak.scanner import get_certificate_simhash
-
-        with pytest.raises(NotImplementedError, match="Wire to repository"):
-            await get_certificate_simhash(uuid4())
-
-    @pytest.mark.asyncio
-    async def test_save_scan_noop(self):
-        """save_scan is a no-op placeholder (line 57)."""
-        from inkprint.leak.scanner import ScanResult, save_scan
-
-        await save_scan(ScanResult())  # should not raise
+    """Cover leak/scanner.py orchestration edges (_run_corpus, default corpora)."""
 
     @pytest.mark.asyncio
     async def test_run_corpus_exhausts_retries(self):
-        """_run_corpus returns error status after all retries exhausted (line 87)."""
+        """_run_corpus returns error status after all retries exhausted."""
         from inkprint.leak.scanner import _run_corpus
 
         async def always_fail(*args):
@@ -473,7 +413,7 @@ class TestScannerCoverageGaps:
 
     @pytest.mark.asyncio
     async def test_run_corpus_final_fallback(self):
-        """_run_corpus returns error on max_retries=0 edge (line 87 unreachable guard)."""
+        """_run_corpus returns error on max_retries=0 edge (final return guard)."""
         from inkprint.leak.scanner import _run_corpus
 
         # With max_retries=0, the for loop body never executes, hits final return
@@ -482,13 +422,10 @@ class TestScannerCoverageGaps:
 
     @pytest.mark.asyncio
     async def test_scan_default_corpora(self):
-        """scan() with corpora=None defaults to all valid corpora (line 115)."""
+        """scan() with corpora=None defaults to all valid corpora."""
         from inkprint.leak.scanner import scan
 
         with (
-            patch("inkprint.leak.scanner.get_certificate_text", AsyncMock(return_value="text")),
-            patch("inkprint.leak.scanner.get_certificate_simhash", AsyncMock(return_value=42)),
-            patch("inkprint.leak.scanner.save_scan", AsyncMock()),
             patch(
                 "inkprint.leak.scanner.scan_common_crawl",
                 AsyncMock(return_value={"corpus": "common_crawl", "hits": [], "hit_count": 0}),
@@ -502,7 +439,7 @@ class TestScannerCoverageGaps:
                 AsyncMock(return_value={"corpus": "the_stack_v2", "hits": [], "hit_count": 0}),
             ),
         ):
-            result = await scan(certificate_id=uuid4(), corpora=None)
+            result = await scan("some text", 42, corpora=None)
         assert len(result.corpus_results) == 3
 
 
@@ -564,6 +501,21 @@ class TestMainLoadKeys:
 
         sig = sign(b"test", loaded_priv)
         assert verify(b"test", sig, loaded_pub) is True
+
+
+class TestMainLifespan:
+    """Cover main.lifespan — schema auto-create on SQLite startup."""
+
+    @pytest.mark.asyncio
+    async def test_lifespan_creates_sqlite_schema(self):
+        """On SQLite, the lifespan creates the schema and the app is usable."""
+        from inkprint.core.db import session_scope
+        from inkprint.main import app, lifespan
+        from inkprint.repositories import certificate_repo
+
+        async with lifespan(app):
+            async with session_scope() as session:
+                assert await certificate_repo.count(session) == 0
 
 
 # ── schemas/certificate.py ──────────────────────────────────────────────────
@@ -1056,18 +1008,3 @@ class TestLeakEvalCoverage:
         assert result.false_positives == 1  # one clean entry was flagged
         assert result.total_known == 20
         assert result.total_clean == 20
-
-
-# ── services/leak_service.py ────────────────────────────────────────────────
-
-
-class TestLeakServiceCoverage:
-    """Cover line 14 of services/leak_service.py (reset_store)."""
-
-    def test_reset_store(self):
-        """reset_store clears the in-memory scan store."""
-        from inkprint.services.leak_service import _scans, reset_store
-
-        _scans["fake"] = {"scan_id": "fake"}
-        reset_store()
-        assert len(_scans) == 0

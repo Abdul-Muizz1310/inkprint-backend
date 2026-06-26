@@ -7,6 +7,7 @@ Marked as integration because they require the app to be wired up
 (though they use a test DB, not production).
 """
 
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
@@ -25,6 +26,14 @@ async def client():
         base_url="http://test",
     ) as c:
         yield c
+
+
+@pytest.fixture(autouse=True)
+def _stub_background_scan():
+    """Keep the leak background task offline (it would otherwise hit live
+    corpora). The scan flow itself is verified in test_leak_service.py."""
+    with patch("inkprint.services.leak_service.run_scan", new=AsyncMock(return_value=None)):
+        yield
 
 
 # ── Certificates ─────────────────────────────────────────────────────────────

@@ -1,4 +1,10 @@
-"""Certificate service — orchestrates domain logic with in-memory storage."""
+"""Certificate service — domain logic over the DB-backed repository.
+
+Pure provenance/fingerprint logic (canonicalize, sign, fingerprint, manifest)
+lives here and in :mod:`inkprint.provenance`/:mod:`inkprint.fingerprint`;
+persistence is delegated to :mod:`inkprint.repositories.certificate_repo` via a
+committed :func:`session_scope`.
+"""
 
 from __future__ import annotations
 
@@ -8,21 +14,36 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from inkprint.core.db import session_scope
 from inkprint.fingerprint.compare import compare
 from inkprint.fingerprint.simhash import compute_simhash
 from inkprint.provenance.canonicalize import canonicalize
 from inkprint.provenance.manifest import build_manifest, validate_manifest
 from inkprint.provenance.signer import sign, verify
+from inkprint.repositories import certificate_repo
 
 logger = logging.getLogger(__name__)
 
-# In-memory store — replaced with SQLAlchemy in a later step.
-_certificates: dict[str, dict[str, Any]] = {}
+
+async def _compute_embedding_or_zero(text: str) -> list[float]:
+    """Compute an embedding, falling back to a zero vector on any failure."""
+    try:
+        from inkprint.fingerprint.embed import compute_embedding
+
+        return await compute_embedding(text)
+    except Exception:
+        logger.debug("Embedding computation failed; using zero vector fallback")
+        return [0.0] * 768
 
 
-def reset_store() -> None:
-    """Clear the in-memory store (useful for tests)."""
-    _certificates.clear()
+def _detect_language(text: str) -> str | None:
+    """Best-effort language detection; None when unavailable."""
+    try:
+        from langdetect import detect
+
+        return str(detect(text))
+    except Exception:
+        return None
 
 
 async def create_certificate(
@@ -34,7 +55,7 @@ async def create_certificate(
     public_key: object,
     key_id: str,
 ) -> dict[str, Any]:
-    """Create a certificate: canonicalize, hash, sign, fingerprint, build manifest."""
+    """Create a certificate: canonicalize, hash, sign, fingerprint, persist."""
     from cryptography.hazmat.primitives.asymmetric.ed25519 import (
         Ed25519PrivateKey,
         Ed25519PublicKey,
@@ -48,25 +69,8 @@ async def create_certificate(
     content_hash = hashlib.sha256(canonical).hexdigest()
     signature_b64 = sign(canonical, private_key)
     simhash_val = compute_simhash(text)
-
-    # Embedding — fallback to zero vector when Voyage API key is missing
-    embedding: list[float] = [0.0] * 768
-    try:
-        from inkprint.fingerprint.embed import compute_embedding
-
-        embedding = await compute_embedding(text)
-    except Exception:
-        logger.debug("Embedding computation failed; using zero vector fallback")
-
-    # Language detection
-    language: str | None = None
-    try:
-        from langdetect import detect
-
-        language = detect(text)
-    except Exception:
-        language = None
-
+    embedding = await _compute_embedding_or_zero(text)
+    language = _detect_language(text)
     issued_at = datetime.now(UTC)
 
     manifest = build_manifest(
@@ -81,8 +85,6 @@ async def create_certificate(
     )
     validate_manifest(manifest)
 
-    storage_key = f"certificates/{cert_id}.json"
-
     record = {
         "id": str(cert_id),
         "author": author,
@@ -95,16 +97,18 @@ async def create_certificate(
         "issued_at": issued_at,
         "signature": signature_b64,
         "manifest": manifest,
-        "storage_key": storage_key,
+        "storage_key": f"certificates/{cert_id}.json",
         "metadata": metadata,
     }
-    _certificates[str(cert_id)] = record
+    async with session_scope() as session:
+        await certificate_repo.add(session, record)
     return record
 
 
-def get_certificate(cert_id: str) -> dict[str, Any] | None:
+async def get_certificate(cert_id: str) -> dict[str, Any] | None:
     """Look up a certificate by UUID string."""
-    return _certificates.get(cert_id)
+    async with session_scope() as session:
+        return await certificate_repo.get(session, cert_id)
 
 
 def verify_certificate(
@@ -121,11 +125,9 @@ def verify_certificate(
     checks: dict[str, bool] = {}
     warnings: list[str] = []
 
-    # Check signature
     sig_block = manifest.get("signature", {})
     sig_value = sig_block.get("value", "")
 
-    # Build the data that was signed: the canonical hash from the manifest
     hash_assertion = None
     for a in manifest.get("assertions", []):
         if a["label"] == "c2pa.hash.data":
@@ -158,21 +160,12 @@ async def diff_certificate(
     text: str,
 ) -> dict[str, Any] | None:
     """Compare new text against a parent certificate's fingerprints."""
-    parent = get_certificate(parent_id)
+    parent = await get_certificate(parent_id)
     if parent is None:
         return None
 
     child_simhash = compute_simhash(text)
-
-    # Embedding — fallback to zero vector
-    child_embedding: list[float] = [0.0] * 768
-    try:
-        from inkprint.fingerprint.embed import compute_embedding
-
-        child_embedding = await compute_embedding(text)
-    except Exception:
-        logger.debug("Embedding computation failed; using zero vector fallback")
-
+    child_embedding = await _compute_embedding_or_zero(text)
     parent_embedding = parent["embedding"]
 
     # When both embeddings are zero vectors (fallback), use unit vectors
@@ -200,18 +193,22 @@ async def diff_certificate(
     }
 
 
-def search_certificates(text: str, mode: str) -> dict[str, Any]:
-    """Search certificates by hash (exact) or embedding (semantic)."""
-    results: list[dict[str, Any]] = []
+async def search_certificates(text: str, mode: str) -> dict[str, Any]:
+    """Search certificates by hash (exact) or embedding (semantic).
 
-    if mode == "exact":
-        canonical = canonicalize(text)
-        content_hash = hashlib.sha256(canonical).hexdigest()
-        for cert in _certificates.values():
-            if cert["content_hash"] == content_hash:
-                results.append({"id": cert["id"], "author": cert["author"], "score": 1.0})
-    elif mode == "semantic":
-        # Without a real vector DB, return empty results
-        pass
+    Exact mode matches the canonical SHA-256. Semantic mode embeds the query
+    and ranks stored certificates by cosine similarity; without an embedding
+    backend the query vector is zero and semantic search returns nothing.
+    """
+    async with session_scope() as session:
+        if mode == "exact":
+            canonical = canonicalize(text)
+            content_hash = hashlib.sha256(canonical).hexdigest()
+            results = await certificate_repo.search_exact(session, content_hash)
+        elif mode == "semantic":
+            query_embedding = await _compute_embedding_or_zero(text)
+            results = await certificate_repo.search_semantic(session, query_embedding)
+        else:
+            results = []
 
     return {"results": results, "total": len(results)}

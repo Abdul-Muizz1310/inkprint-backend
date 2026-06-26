@@ -17,12 +17,13 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
+from inkprint.core.db import session_scope
 from inkprint.fingerprint.compare import compare
 from inkprint.fingerprint.simhash import compute_simhash
 from inkprint.provenance.canonicalize import canonicalize
 from inkprint.provenance.manifest import build_manifest, validate_manifest
 from inkprint.provenance.signer import sign, verify
-from inkprint.services import certificate_service
+from inkprint.repositories import certificate_repo
 
 logger = logging.getLogger(__name__)
 
@@ -128,9 +129,10 @@ async def create_batch(
             }
         )
 
-    # Commit: all-or-nothing
-    for record in pending_records:
-        certificate_service._certificates[str(record["id"])] = record
+    # Commit: all-or-nothing. Any embedding/manifest failure above raised
+    # before this point, so nothing is persisted on a mid-batch failure.
+    async with session_scope() as session:
+        await certificate_repo.add_many(session, pending_records)
 
     return response_items
 
@@ -144,11 +146,15 @@ async def verify_batch(
     assert isinstance(public_key, Ed25519PublicKey)
 
     results: list[dict[str, Any]] = []
+    async with session_scope() as session:
+        cert_ids = [str(item["certificate_id"]) for item in items]
+        records = {cid: await certificate_repo.get(session, cid) for cid in set(cert_ids)}
+
     for item in items:
         cert_id: UUID = item["certificate_id"]
         supplied_text: str | None = item.get("text")
 
-        record = certificate_service.get_certificate(str(cert_id))
+        record = records[str(cert_id)]
         if record is None:
             results.append(
                 {

@@ -8,7 +8,6 @@ import logging
 from collections.abc import AsyncIterator, Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import Any
-from uuid import UUID
 
 from inkprint.leak.common_crawl import scan_common_crawl
 from inkprint.leak.huggingface import scan_huggingface
@@ -40,21 +39,6 @@ def cache_key(content_hash: str, corpus: str, snapshot: str) -> str:
     """Generate a deterministic cache key for scan results."""
     raw = f"{content_hash}:{corpus}:{snapshot}"
     return hashlib.sha256(raw.encode()).hexdigest()
-
-
-async def get_certificate_text(certificate_id: UUID) -> str:
-    """Retrieve certificate text from storage. Placeholder for real implementation."""
-    raise NotImplementedError("Wire to repository in S4")
-
-
-async def get_certificate_simhash(certificate_id: UUID) -> int:
-    """Retrieve certificate simhash. Placeholder for real implementation."""
-    raise NotImplementedError("Wire to repository in S4")
-
-
-async def save_scan(scan_result: ScanResult) -> None:
-    """Persist scan results. Placeholder for real implementation."""
-    pass
 
 
 CorpusScanFn = Callable[..., Coroutine[Any, Any, dict[str, Any]]]
@@ -102,26 +86,20 @@ def _build_tasks(
 
 
 async def scan(
-    certificate_id: UUID,
+    text: str,
+    simhash: int,
     corpora: list[str] | None = None,
-    stream: bool = False,
-) -> ScanResult | AsyncIterator[dict[str, Any]]:
-    """Run leak scan across specified corpora.
+) -> ScanResult:
+    """Run a leak scan of ``text`` across the requested corpora.
 
-    If stream=True, yields events as each corpus completes.
-    Otherwise returns aggregated ScanResult.
+    Returns an aggregated :class:`ScanResult`. Persistence is the caller's
+    responsibility (see :mod:`inkprint.services.leak_service`).
     """
     if corpora is None:
         corpora = list(VALID_CORPORA)
     validate_corpora(corpora)
 
-    text = await get_certificate_text(certificate_id)
-    simhash = await get_certificate_simhash(certificate_id)
-
     tasks = _build_tasks(corpora, text, simhash)
-
-    if stream:
-        return _stream_scan(tasks)
 
     results = await asyncio.gather(
         *(_run_corpus(name, factory, args) for name, factory, args in tasks)
@@ -131,9 +109,19 @@ async def scan(
     for r in results:
         all_hits.extend(r.get("hits", []))
 
-    scan_result = ScanResult(corpus_results=list(results), score=score(all_hits))
-    await save_scan(scan_result)
-    return scan_result
+    return ScanResult(corpus_results=list(results), score=score(all_hits))
+
+
+async def scan_stream(
+    text: str,
+    simhash: int,
+    corpora: list[str] | None = None,
+) -> AsyncIterator[dict[str, Any]]:
+    """Yield one event per corpus as it completes (for SSE)."""
+    if corpora is None:
+        corpora = list(VALID_CORPORA)
+    validate_corpora(corpora)
+    return _stream_scan(_build_tasks(corpora, text, simhash))
 
 
 async def _stream_scan(

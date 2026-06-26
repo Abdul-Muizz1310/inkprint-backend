@@ -13,11 +13,16 @@ from uuid import UUID, uuid4
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from inkprint.core.db import session_scope
 from inkprint.main import app
 from inkprint.provenance.envelope_builder import canonical_bundle_bytes
-from inkprint.services import certificate_service, envelope_service, leak_service
+from inkprint.repositories import certificate_repo
+from inkprint.services import certificate_service, envelope_service
 
 pytestmark = pytest.mark.integration
+
+# Certificates/leak persist to the per-test SQLite DB (autouse db_tables
+# fixture). Only the dossier-envelope store remains in-memory and is reset here.
 
 
 @pytest.fixture()
@@ -31,14 +36,10 @@ async def client():
 
 
 @pytest.fixture(autouse=True)
-def _clean_stores():
-    """Reset in-memory stores before and after each test."""
-    certificate_service.reset_store()
-    leak_service.reset_store()
+def _clean_envelope_store():
+    """Reset the in-memory dossier-envelope store before and after each test."""
     envelope_service.reset_store()
     yield
-    certificate_service.reset_store()
-    leak_service.reset_store()
     envelope_service.reset_store()
 
 
@@ -118,7 +119,7 @@ class TestBatchCreateCertificates:
         )
         assert resp.status_code == 200
         cert_id = resp.json()["certificates"][0]["certificate_id"]
-        stored = certificate_service.get_certificate(cert_id)
+        stored = await certificate_service.get_certificate(cert_id)
         assert stored is not None
         assert stored["metadata"] == {"source": "unit-test"}
 
@@ -151,7 +152,8 @@ class TestBatchCreateCertificates:
 
     async def test_tc_b_10_embedding_failure_rolls_back(self, client: AsyncClient) -> None:
         """TC-B-10: Embedding API failure mid-batch → 503 with no commits."""
-        baseline = len(certificate_service._certificates)
+        async with session_scope() as s:
+            baseline = await certificate_repo.count(s)
         call_count = {"n": 0}
 
         async def flaky_embed(text: str) -> list[float]:
@@ -177,7 +179,8 @@ class TestBatchCreateCertificates:
             )
 
         assert resp.status_code == 503
-        after = len(certificate_service._certificates)
+        async with session_scope() as s:
+            after = await certificate_repo.count(s)
         assert after == baseline
 
 

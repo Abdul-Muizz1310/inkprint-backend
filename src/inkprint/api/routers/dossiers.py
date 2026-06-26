@@ -26,7 +26,7 @@ async def create_dossier_envelope(body: EnvelopeRequest, request: Request) -> En
     private_key, key_id = _get_signing(request)
 
     try:
-        record = create_envelope(
+        record = await create_envelope(
             dossier_id=body.dossier_id,
             evidence_cert_ids=list(body.evidence_cert_ids),
             debate_transcript_hash=body.debate_transcript_hash,

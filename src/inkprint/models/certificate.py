@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import JSON as SAJSON
-from sqlalchemy import BigInteger, ForeignKey, Integer, Numeric, Text, Uuid, func
+from sqlalchemy import ForeignKey, Integer, Numeric, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from inkprint.models.base import Base
@@ -31,7 +31,10 @@ class Certificate(Base):
     author: Mapped[str] = mapped_column(Text(), nullable=False, index=True)
     text: Mapped[str] = mapped_column(Text(), nullable=False, server_default="")
     content_hash: Mapped[str] = mapped_column(Text(), nullable=False, index=True)
-    simhash: Mapped[int] = mapped_column(BigInteger(), nullable=False)
+    # SimHash is a 64-bit *unsigned* value, which overflows a signed BigInteger
+    # (max 2**63-1) on both SQLite and Postgres, so it is stored as a decimal
+    # string and parsed back to int at the repository boundary.
+    simhash: Mapped[str] = mapped_column(Text(), nullable=False)
     # JSON-encoded float array (length 768). Stored as Text for portability.
     embedding: Mapped[str] = mapped_column(Text(), nullable=False)
     content_len: Mapped[int] = mapped_column(Integer(), nullable=False)

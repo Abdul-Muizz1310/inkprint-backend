@@ -17,5 +17,5 @@ async def search_certificates(
     """Search for certificates by text content."""
     from inkprint.services.certificate_service import search_certificates as svc_search
 
-    result = svc_search(text=text, mode=mode)
+    result = await svc_search(text=text, mode=mode)
     return SearchResponse(**result)
