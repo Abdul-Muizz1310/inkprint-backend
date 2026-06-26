@@ -23,9 +23,10 @@ from inkprint.api.routers.dossiers import router as dossiers_router
 from inkprint.api.routers.leak import router as leak_router
 from inkprint.api.routers.search import router as search_router
 from inkprint.api.routers.verify import router as verify_router
-from inkprint.core.config import Settings
+from inkprint.core.config import Settings, get_settings
 from inkprint.platform.health import router as health_router
 from inkprint.platform.middleware import add_middleware
+from inkprint.platform.platform_token import install_platform_token
 
 
 def _load_keys() -> tuple[Any, Any, str]:
@@ -72,6 +73,7 @@ def create_app() -> FastAPI:
 
     # Middleware (must be added before routers for CORS to work on all routes)
     add_middleware(application)
+    install_platform_token(application, demo_mode=get_settings().demo_mode)
 
     # Prometheus metrics — exposes GET /metrics
     Instrumentator().instrument(application).expose(application, include_in_schema=False)
