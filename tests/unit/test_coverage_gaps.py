@@ -705,78 +705,62 @@ class TestConfigIsProduction:
 
 
 class TestDbCoverage:
-    """Cover lines 24, 32-37, 44, 49-50 of core/db.py."""
+    """Cover core/db.py: URL resolution, engine/factory caching, session_scope
+    rollback, and check_db failure. Happy paths (session_scope commit,
+    init_models, configure_engine, dispose_engine, check_db ok) are exercised
+    by the db_tables fixture, the repository tests, and the health tests."""
 
-    def test_get_engine_no_database_url(self):
-        """get_engine returns None when database_url is empty."""
+    def test_resolve_url_defaults_to_sqlite(self):
+        """Empty database_url falls back to the local SQLite default."""
         import inkprint.core.db as db_mod
-
-        # Reset module state
-        db_mod._engine = None
-        db_mod._session_factory = None
 
         with patch("inkprint.core.db.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(database_url="")
-            engine = db_mod.get_engine()
-        assert engine is None
-        # Reset
-        db_mod._engine = None
+            assert db_mod._resolve_database_url() == db_mod.DEFAULT_DATABASE_URL
 
-    def test_get_engine_with_database_url(self):
-        """get_engine creates engine when database_url is provided."""
+    def test_resolve_url_uses_configured(self):
+        """A configured database_url is used verbatim."""
         import inkprint.core.db as db_mod
-
-        db_mod._engine = None
-        db_mod._session_factory = None
 
         with patch("inkprint.core.db.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(
-                database_url="postgresql+asyncpg://localhost/test"
-            )
-            with patch("inkprint.core.db.create_async_engine") as mock_create:
-                mock_create.return_value = MagicMock()
-                engine = db_mod.get_engine()
-        assert engine is not None
-        db_mod._engine = None
+            mock_settings.return_value = MagicMock(database_url="postgresql+asyncpg://h/db")
+            assert db_mod._resolve_database_url() == "postgresql+asyncpg://h/db"
 
-    def test_get_session_factory_no_engine(self):
-        """get_session_factory returns None when no engine."""
+    def test_get_engine_caches(self):
+        """get_engine returns the same cached engine on repeat calls."""
         import inkprint.core.db as db_mod
 
         db_mod._engine = None
         db_mod._session_factory = None
+        first = db_mod.get_engine()
+        second = db_mod.get_engine()
+        assert first is second
 
-        with patch("inkprint.core.db.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(database_url="")
-            factory = db_mod.get_session_factory()
-        assert factory is None
-        db_mod._engine = None
-
-    def test_get_session_factory_with_engine(self):
-        """get_session_factory creates factory when engine exists."""
+    def test_get_session_factory_caches(self):
+        """get_session_factory returns the same cached factory."""
         import inkprint.core.db as db_mod
 
-        mock_engine = MagicMock()
-        db_mod._engine = mock_engine
-        db_mod._session_factory = None
-
-        factory = db_mod.get_session_factory()
-        assert factory is not None
         db_mod._engine = None
         db_mod._session_factory = None
+        first = db_mod.get_session_factory()
+        second = db_mod.get_session_factory()
+        assert first is second
 
     @pytest.mark.asyncio
-    async def test_check_db_no_engine(self):
-        """check_db returns 'no_db' when no engine."""
-        import inkprint.core.db as db_mod
+    async def test_session_scope_rolls_back_on_error(self, db_tables):
+        """session_scope rolls back and re-raises when the body raises."""
+        from inkprint.core.db import session_scope
 
-        db_mod._engine = None
+        with pytest.raises(ValueError, match="boom"):
+            async with session_scope():
+                raise ValueError("boom")
 
-        with patch("inkprint.core.db.get_settings") as mock_settings:
-            mock_settings.return_value = MagicMock(database_url="")
-            result = await db_mod.check_db()
-        assert result == "no_db"
-        db_mod._engine = None
+    @pytest.mark.asyncio
+    async def test_check_db_ok(self, db_tables):
+        """check_db returns 'ok' against a live (in-memory) database."""
+        from inkprint.core.db import check_db
+
+        assert await check_db() == "ok"
 
     @pytest.mark.asyncio
     async def test_check_db_connection_error(self):
@@ -791,23 +775,6 @@ class TestDbCoverage:
 
         result = await db_mod.check_db()
         assert result == "down"
-        db_mod._engine = None
-
-    @pytest.mark.asyncio
-    async def test_check_db_success(self):
-        """check_db returns 'ok' when SELECT 1 succeeds."""
-        import inkprint.core.db as db_mod
-
-        mock_conn_cm = AsyncMock()
-        mock_conn_cm.__aenter__.return_value = mock_conn_cm
-        mock_conn_cm.execute = AsyncMock()
-
-        mock_engine = MagicMock()
-        mock_engine.connect.return_value = mock_conn_cm
-        db_mod._engine = mock_engine
-
-        result = await db_mod.check_db()
-        assert result == "ok"
         db_mod._engine = None
 
 
