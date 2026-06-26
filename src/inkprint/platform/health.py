@@ -17,7 +17,7 @@ async def health() -> dict[str, str]:
     """Health check endpoint."""
     db_status = await check_db()
     commit = os.environ.get("COMMIT_SHA", "dev")
-    return {"status": "ok", "version": "0.1.0", "db": db_status, "commit": commit}
+    return {"status": "ok", "version": "0.1.0", "db": db_status, "commit_sha": commit}
 
 
 @router.get("/version")

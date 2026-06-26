@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives.serialization import (
     PublicFormat,
 )
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from inkprint.api.routers.batch import router as batch_router
 from inkprint.api.routers.certificates import router as certificates_router
@@ -71,6 +72,9 @@ def create_app() -> FastAPI:
 
     # Middleware (must be added before routers for CORS to work on all routes)
     add_middleware(application)
+
+    # Prometheus metrics — exposes GET /metrics
+    Instrumentator().instrument(application).expose(application, include_in_schema=False)
 
     # Routers
     application.include_router(health_router)

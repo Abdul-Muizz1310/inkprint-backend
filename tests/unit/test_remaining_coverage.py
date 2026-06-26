@@ -49,6 +49,16 @@ class TestHealthEndpoints:
         body = resp.json()
         assert body["status"] == "ok"
         assert "db" in body
+        # /health uses commit_sha for consistency with /version.
+        assert "commit_sha" in body
+        assert "commit" not in body
+
+    async def test_metrics_exposes_prometheus(self, client):
+        """GET /metrics returns 200 with a Prometheus exposition marker."""
+        resp = await client.get("/metrics")
+        assert resp.status_code == 200
+        # Prometheus text exposition format uses HELP/TYPE comment lines.
+        assert "# HELP" in resp.text or "# TYPE" in resp.text
 
     async def test_version_returns_version(self, client):
         """Cover health.py:25-27."""
