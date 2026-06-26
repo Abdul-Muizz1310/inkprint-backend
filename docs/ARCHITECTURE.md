@@ -26,7 +26,8 @@ graph TD
     LeakMod --> Stack[The Stack v2]
   end
 
-  Services --> DB[(Neon pgvector)]
+  Services --> Repos[repositories/]
+  Repos --> DB[(async SQLAlchemy<br/>Postgres / SQLite)]
   Services --> R2[Cloudflare R2]
   API --> Platform[Platform middleware<br/>X-Request-Id, CORS, health]
 ```
@@ -59,19 +60,22 @@ sequenceDiagram
 |---|---|---|
 | **API** | `src/inkprint/api/routers/` | HTTP routing, request validation, status codes |
 | **Schemas** | `src/inkprint/schemas/` | Pydantic v2 request/response models |
-| **Services** | `src/inkprint/services/` | Business logic orchestration, storage |
+| **Services** | `src/inkprint/services/` | Business logic orchestration; open a `session_scope()` and delegate to repositories |
+| **Repositories** | `src/inkprint/repositories/` | All DB access — certificates, derivative links, leak jobs/results |
 | **Provenance** | `src/inkprint/provenance/` | Canonicalization, hashing, Ed25519 signing, C2PA manifest |
 | **Fingerprint** | `src/inkprint/fingerprint/` | SimHash, Voyage embeddings, comparison/verdict |
 | **Leak** | `src/inkprint/leak/` | Corpus scanners (CC, HF, Stack), scoring, orchestrator |
-| **Core** | `src/inkprint/core/` | Config, async DB engine, R2 client, key loading |
+| **Core** | `src/inkprint/core/` | Config, async DB engine + `session_scope`, R2 client, key loading |
 | **Platform** | `src/inkprint/platform/` | Health, version, public-key, middleware |
-| **Models** | `src/inkprint/models/` | SQLAlchemy table definitions |
+| **Models** | `src/inkprint/models/` | SQLAlchemy ORM models (certificates, derivative_links, leak_scan_jobs, leak_scans, dossier_envelopes) |
 | **Evals** | `src/inkprint/evals/` | Evaluation runners (fingerprint, tamper, leak) |
 
 ## Key design decisions
 
-- **MVC layering** — routers never touch storage. Services orchestrate domain modules. Domain modules are pure where possible.
-- **In-memory store for tests** — `CertificateService` uses a dict by default. Real persistence via SQLAlchemy async sessions is wired when `DATABASE_URL` is set.
+- **MVC layering** — routers never touch storage; they call services. Services open a committed `session_scope()` and delegate persistence to the repositories. Domain modules (canonicalize, sign, fingerprint, score) stay pure.
+- **DB-backed persistence with a zero-config local default** — certificates, batches, and leak-scan jobs/results persist through async SQLAlchemy. When `DATABASE_URL` is unset the engine falls back to a local SQLite file (`aiosqlite`), so the service runs and persists without Postgres; production points `DATABASE_URL` at Neon. The lifespan creates the schema on SQLite; Postgres uses Alembic. (The dossier-envelope record is the one store still held in memory; its ORM model exists and DB-backing it is a follow-up.)
+- **Semantic search ranking** — embeddings are stored as a JSON array and ranked by in-Python cosine similarity, so correctness needs no pgvector; a pgvector ANN index is an optional production index, and ranking quality depends on a real Voyage embedding backend.
+- **Leak scan is a real background task** — `POST /leak-scan` returns a pending job and schedules `run_scan`, which resolves the certificate, runs the corpus orchestrator, and persists per-corpus results. Live hits require network access to Common Crawl / HuggingFace / The Stack; offline the scan still completes with zero hits.
 - **Ephemeral keys in dev** — when signing key env vars are absent, the app generates a fresh Ed25519 keypair at startup. Production keys come from env.
 - **Zero-vector embedding fallback** — when Voyage API is unavailable (no key), embeddings default to zero vectors. SimHash still works.
 - **Async leak scanning** — each corpus scans in parallel with timeout + retry. The Stack v2 gracefully degrades if HF token is absent.

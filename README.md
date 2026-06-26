@@ -56,7 +56,7 @@ Most content "watermarking" tools embed invisible markers that can be stripped. 
 - 🧬 Dual fingerprint: SHA-256 (exact match) + SimHash + Voyage AI embedding (paraphrase detection)
 - 🔍 Async leak scanning across Common Crawl, HuggingFace, The Stack v2
 - 📡 SSE streaming for live leak-scan progress
-- 🔎 Semantic search across all registered certificates (pgvector HNSW)
+- 🔎 Semantic search ranks registered certificates by embedding cosine similarity (real embeddings need a Voyage key; a pgvector ANN index is an optional production optimization)
 - 📄 QR code generation linking to the certificate page
 - 🔐 Downloadable `.zip` archive of manifest + public key
 - ✅ Tamper detection with itemised verdict (signature, hash, simhash, embedding)
@@ -84,7 +84,7 @@ flowchart TD
     Embed --> SoftOut
 
     HardOut --> Manifest[📜 C2PA v2.2 manifest]
-    SoftOut --> DB[(Neon pgvector<br/>HNSW index)]
+    SoftOut --> DB[(async SQLAlchemy<br/>Postgres / SQLite)]
     Manifest --> DB
     Manifest --> R2[☁️ Cloudflare R2]
 ```
@@ -144,9 +144,10 @@ flowchart TD
     LeakSvc --> Stack[leak/the_stack]
     LeakSvc --> Score[leak/score]
 
-    CertSvc --> DB[(Neon pgvector<br/>async SQLAlchemy)]
+    CertSvc --> Repo[repositories/]
+    Repo --> DB[(async SQLAlchemy<br/>Postgres / SQLite)]
     CertSvc --> R2[Cloudflare R2]
-    LeakSvc --> DB
+    LeakSvc --> Repo
 ```
 
 > **Rule:** `routers → services → provenance/fingerprint/leak → models`. No layer reaches across. Routers never touch the DB; models never know HTTP.
@@ -217,7 +218,7 @@ src/inkprint/
 | `POST` | `/leak-scan` | Start async leak scan across Common Crawl, HuggingFace, The Stack v2. |
 | `GET`  | `/leak-scan/{id}` | Poll leak-scan result. |
 | `GET`  | `/leak-scan/{id}/stream` | 📡 **SSE** — live scan progress events. |
-| `GET`  | `/search` | Semantic search across all certificates (pgvector HNSW). |
+| `GET`  | `/search` | Search certificates — exact by content hash, or semantic by embedding cosine similarity. |
 | `GET`  | `/public-key.pem` | Ed25519 public key for offline verification. |
 | `GET`  | `/health` | Liveness probe. |
 | `GET`  | `/version` | Build version. |
@@ -233,7 +234,7 @@ src/inkprint/
 | **Crypto** | Ed25519 via `cryptography`, SHA-256 |
 | **Fingerprint** | SimHash (64-bit) + Voyage AI `voyage-3-lite` (768d) |
 | **Manifest** | C2PA v2.2-aligned JSON, validated against committed JSON Schema |
-| **DB** | Neon Postgres (async SQLAlchemy + asyncpg, pgvector HNSW) |
+| **DB** | async SQLAlchemy 2.0 — asyncpg/Neon Postgres in production, `aiosqlite` SQLite as the zero-config local default. Embeddings stored as a JSON array; pgvector ANN is an optional production index. |
 | **Blob storage** | Cloudflare R2 (S3-compatible) |
 | **Migrations** | Alembic, auto-applied via Render `preDeployCommand` |
 | **Leak detection** | Common Crawl CDX, HuggingFace datasets, The Stack v2 |
@@ -252,21 +253,25 @@ Every request gets a unique `X-Request-ID` header. structlog emits structured JS
 ## 🚀 Run locally
 
 ```bash
-# 1. clone & env
+# 1. clone & install
 git clone https://github.com/Abdul-Muizz1310/inkprint-backend.git
 cd inkprint-backend
-cp .env.example .env
-# edit: DATABASE_URL, VOYAGE_API_KEY, R2_*, CORS_ORIGINS
-
-# 2. generate signing keys
 uv sync
+
+# 2. signing keys (optional — ephemeral keys are generated at startup if absent)
 uv run python scripts/generate_keys.py   # Ed25519 keypair → keys/
 
-# 3. migrate + serve
-uv run alembic upgrade head
+# 3. serve — no config required; persists to a local SQLite file by default,
+#    and the schema is created automatically on startup
 uv run uvicorn inkprint.main:app --reload
 # → http://localhost:8000/docs
 ```
+
+For a production-like setup, copy `.env.example` to `.env` and set
+`DATABASE_URL` to a Neon/Postgres DSN, then `uv run alembic upgrade head`
+(the migrations enable pgvector and are Postgres-targeted; SQLite uses the
+startup auto-create above). Set `VOYAGE_API_KEY` to compute real embeddings so
+semantic search ranks meaningfully, and `R2_*` to archive certificate blobs.
 
 ### Issue a certificate
 
