@@ -15,15 +15,15 @@ Test cases:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
 
 from inkprint.core.db import session_scope
-from inkprint.models.leak import LeakScanResult
-from inkprint.repositories import certificate_repo
+from inkprint.models.leak import LeakScanJob, LeakScanResult
+from inkprint.repositories import certificate_repo, leak_repo
 from inkprint.services import leak_service
 
 
@@ -70,7 +70,7 @@ class TestLeakService:
                 "snapshot": "CC-MAIN-2024-50",
             }
 
-        async def fake_hf(text):
+        async def fake_hf(text, simhash):
             return {"corpus": "huggingface", "hits": [], "hit_count": 0}
 
         with (
@@ -110,7 +110,7 @@ class TestLeakService:
         scan_id = UUID(job["scan_id"])
 
         with patch(
-            "inkprint.services.leak_service.scanner.scan",
+            "inkprint.services.leak_service.scanner.scan_one",
             new=AsyncMock(side_effect=RuntimeError("orchestrator boom")),
         ):
             await leak_service.run_scan(scan_id, cert_id, ["common_crawl"])
@@ -121,3 +121,84 @@ class TestLeakService:
 
     async def test_tc_ls_05_get_unknown_scan_returns_none(self):
         assert await leak_service.get_scan(str(uuid4())) is None
+
+    async def test_tc_l_10_cache_short_circuits_corpus(self):
+        """TC-L-10: re-scanning the same content reuses the cached corpus result.
+
+        The spec's cache invariant: a fresh (content_hash, corpus, snapshot)
+        result must short-circuit the corpus query. Proven by counting real
+        corpus invocations across two scans of the same certificate — the second
+        must not hit the corpus at all.
+        """
+        cert_id = await _seed_cert(text="cache me exactly once")
+        calls = 0
+
+        async def counting_cc(text, simhash):
+            nonlocal calls
+            calls += 1
+            return {
+                "corpus": "common_crawl",
+                "hits": [],
+                "hit_count": 0,
+                "snapshot": "CC-MAIN-2024-50",
+            }
+
+        with patch("inkprint.leak.scanner.scan_common_crawl", counting_cc):
+            job1 = await leak_service.create_scan(cert_id, corpora=["common_crawl"])
+            await leak_service.run_scan(UUID(job1["scan_id"]), cert_id, ["common_crawl"])
+            job2 = await leak_service.create_scan(cert_id, corpora=["common_crawl"])
+            await leak_service.run_scan(UUID(job2["scan_id"]), cert_id, ["common_crawl"])
+
+        assert calls == 1, "second scan should have been served from the 7-day cache"
+        done2 = await leak_service.get_scan(job2["scan_id"])
+        assert done2 is not None and done2["status"] == "complete"
+
+    async def test_reap_stale_scans_marks_orphaned_running_as_error(self):
+        """REL-2: a scan orphaned in 'running' past max-age is reaped to 'error'.
+
+        A fresh job within the window is left untouched, so clients of live scans
+        are never prematurely failed.
+        """
+        cert_id = await _seed_cert()
+
+        stale = await leak_service.create_scan(cert_id, corpora=["common_crawl"])
+        fresh = await leak_service.create_scan(cert_id, corpora=["common_crawl"])
+        stale_id = UUID(stale["scan_id"])
+        fresh_id = UUID(fresh["scan_id"])
+
+        async with session_scope() as s:
+            row = await s.get(LeakScanJob, stale_id)
+            row.status = "running"
+            row.created_at = datetime.now(UTC) - timedelta(hours=1)
+
+        reaped = await leak_service.reap_stale_scans(max_age=timedelta(minutes=30))
+        assert reaped == 1
+
+        done = await leak_service.get_scan(str(stale_id))
+        assert done is not None and done["status"] == "error"
+        still_pending = await leak_service.get_scan(str(fresh_id))
+        assert still_pending is not None and still_pending["status"] == "pending"
+
+    async def test_cache_stores_and_reads_back_via_repo(self):
+        """Direct repo round-trip: a cached result is returned within the TTL."""
+        key = "k-roundtrip"
+        payload = {"corpus": "common_crawl", "hits": [], "hit_count": 0, "snapshot": "s1"}
+        async with session_scope() as s:
+            await leak_repo.put_cached_result(
+                s,
+                cache_key=key,
+                content_hash="ch",
+                corpus="common_crawl",
+                snapshot="s1",
+                result=payload,
+            )
+        async with session_scope() as s:
+            got = await leak_repo.get_cached_result(s, cache_key=key)
+        assert got == payload
+
+        # Expired entries are treated as a miss.
+        async with session_scope() as s:
+            got_expired = await leak_repo.get_cached_result(
+                s, cache_key=key, now=datetime.now(UTC) + timedelta(days=8)
+            )
+        assert got_expired is None

@@ -152,6 +152,71 @@ class TestVerifyCertificate:
         body = resp.json()
         assert body["valid"] is False
 
+    # ── Negative-space regression tests (audit finding 02) ───────────────────
+    # Caller-supplied manifest JSON reaches verify_certificate directly. Each of
+    # the following malformed shapes must yield a *controlled* 200 valid:false
+    # verdict, never an unhandled 500. These pin the specific defensive guards in
+    # verify_certificate: reverting any one of them re-introduces a 500 and turns
+    # the matching test red.
+
+    async def test_verify_assertions_not_a_list(self, client):
+        """`assertions` is not a list → controlled 200, no 500.
+
+        Pins the ``isinstance(assertions, list)`` guard. Without it,
+        ``for a in 123`` raises TypeError → unhandled 500.
+        """
+        resp = await client.post(
+            "/verify",
+            json={"manifest": {"assertions": 123, "signature": {"value": "x"}}},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["valid"] is False
+
+    async def test_verify_assertion_item_not_a_dict(self, client):
+        """An assertion item that is not a dict → controlled 200, no 500.
+
+        Pins the ``isinstance(a, dict)`` guard. Without it, ``"x".get("label")``
+        (or ``"x"["label"]``) raises Attribute/TypeError → unhandled 500.
+        """
+        resp = await client.post(
+            "/verify",
+            json={"manifest": {"assertions": ["x"], "signature": {"value": "y"}}},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["valid"] is False
+
+    async def test_verify_assertion_missing_label_key(self, client):
+        """An assertion dict with no ``label`` key → controlled 200, no 500.
+
+        This is the crux of finding 02: it pins ``a.get("label")`` against a
+        regression to ``a["label"]``, which would raise KeyError → unhandled 500
+        on a body like ``{"assertions": [{}]}``.
+        """
+        resp = await client.post(
+            "/verify",
+            json={"manifest": {"assertions": [{}], "signature": {"value": "z"}}},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["valid"] is False
+
+    async def test_verify_hash_assertion_data_not_a_dict(self, client):
+        """A hash assertion whose ``data`` is not a dict → controlled 200, no 500.
+
+        Pins the ``isinstance(data, dict)`` guard. Without it,
+        ``"notadict".get("hash")`` raises AttributeError → unhandled 500.
+        """
+        resp = await client.post(
+            "/verify",
+            json={
+                "manifest": {
+                    "assertions": [{"label": "c2pa.hash.data", "data": "notadict"}],
+                    "signature": {"value": "sig"},
+                }
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["valid"] is False
+
     async def test_verify_with_wrong_text(self, client):
         """Verify with tampered text — hash check fails."""
         create_resp = await client.post(
@@ -326,9 +391,8 @@ class TestLeakService:
         )
         assert resp.status_code == 404
 
-    async def test_get_scan_and_stream(self, client):
-        """Cover leak_service.py get_scan + stream endpoint."""
-        # Create cert + scan
+    async def test_get_scan_returns_record(self, client):
+        """Cover leak_service.get_scan via GET /leak-scan/{id}."""
         create_resp = await client.post(
             "/certificates",
             json={"text": "leak check text", "author": "test@test.com"},
@@ -341,13 +405,9 @@ class TestLeakService:
         )
         scan_id = scan_resp.json()["scan_id"]
 
-        # GET scan
         get_resp = await client.get(f"/leak-scan/{scan_id}")
         assert get_resp.status_code == 200
-
-        # Stream scan
-        stream_resp = await client.get(f"/leak-scan/{scan_id}/stream")
-        assert stream_resp.status_code == 200
+        assert get_resp.json()["scan_id"] == scan_id
 
     async def test_create_scan_with_custom_corpora(self, client):
         """Cover leak_service.py:23 — custom corpora."""
@@ -362,6 +422,88 @@ class TestLeakService:
             json={"certificate_id": cert["id"], "corpora": ["common_crawl"]},
         )
         assert resp.status_code == 202
+
+
+# ── api/routers/leak.py — live SSE stream (drives the composed path) ─────────
+
+
+class TestLeakScanStreamEndpoint:
+    """Drive the real SSE streaming path end-to-end.
+
+    Deliberately *not* inside ``TestLeakService`` (whose autouse fixture stubs
+    ``run_scan`` to a no-op — which would leave the scan permanently ``pending``
+    and the terminal-state stream loop spinning forever). Here the real
+    ``run_scan`` executes with corpus clients mocked to complete instantly, so
+    the endpoint must actually consume the per-corpus progress channel and close
+    on the terminal event — proving the stream is live, not a single snapshot.
+    """
+
+    async def test_stream_emits_live_events_until_complete(self, client):
+        import asyncio
+        from uuid import UUID
+
+        from inkprint.services import leak_service
+
+        create_resp = await client.post(
+            "/certificates",
+            json={"text": "stream me", "author": "s@t.com"},
+        )
+        cert_id = create_resp.json()["id"]
+        job = await leak_service.create_scan(UUID(cert_id), corpora=["common_crawl"])
+        scan_id = job["scan_id"]
+
+        async def fake_cc(text: str, simhash: int) -> dict:
+            return {
+                "corpus": "common_crawl",
+                "hits": [],
+                "hit_count": 0,
+                "snapshot": "CC-MAIN-2024-50",
+            }
+
+        with patch("inkprint.leak.scanner.scan_common_crawl", fake_cc):
+
+            async def drive() -> None:
+                # Let the stream subscribe before the scan publishes events.
+                await asyncio.sleep(0.05)
+                await leak_service.run_scan(UUID(scan_id), UUID(cert_id), ["common_crawl"])
+
+            driver = asyncio.create_task(drive())
+            # Safety net: a regression that fails to close the stream fails the
+            # test loudly instead of hanging the whole suite.
+            resp = await asyncio.wait_for(client.get(f"/leak-scan/{scan_id}/stream"), timeout=10)
+            await driver
+
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.headers.get("content-type", "")
+        body = resp.text
+        # The stream carried a live per-corpus event and a terminal event —
+        # not just one static snapshot.
+        assert "corpus_complete" in body
+        assert '"type": "complete"' in body
+
+    async def test_stream_of_already_complete_scan_closes(self, client):
+        """A finished scan emits its snapshot once and closes immediately."""
+        from uuid import UUID
+
+        from inkprint.services import leak_service
+
+        create_resp = await client.post(
+            "/certificates",
+            json={"text": "already done", "author": "s@t.com"},
+        )
+        cert_id = create_resp.json()["id"]
+        job = await leak_service.create_scan(UUID(cert_id), corpora=["common_crawl"])
+        scan_id = job["scan_id"]
+
+        async def fake_cc(text: str, simhash: int) -> dict:
+            return {"corpus": "common_crawl", "hits": [], "hit_count": 0}
+
+        with patch("inkprint.leak.scanner.scan_common_crawl", fake_cc):
+            await leak_service.run_scan(UUID(scan_id), UUID(cert_id), ["common_crawl"])
+
+        resp = await client.get(f"/leak-scan/{scan_id}/stream")
+        assert resp.status_code == 200
+        assert '"status": "complete"' in resp.text
 
 
 # ── api/routers/certificates.py — GET endpoints ─────────────────────────────
@@ -410,7 +552,10 @@ class TestCertificateEndpoints:
         assert len(resp.content) > 0
 
     async def test_download_certificate(self, client):
-        """Cover certificates.py:90."""
+        """Cover the /download zip archive path."""
+        import io
+        import zipfile
+
         create_resp = await client.post(
             "/certificates",
             json={"text": "download this", "author": "me@test.com"},
@@ -419,8 +564,12 @@ class TestCertificateEndpoints:
 
         resp = await client.get(f"/certificates/{cert_id}/download")
         assert resp.status_code == 200
-        assert resp.text == "download this"
+        assert resp.headers["content-type"] == "application/zip"
         assert "attachment" in resp.headers.get("content-disposition", "")
+        with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+            assert zf.read("content.txt").decode() == "download this"
+            assert "manifest.json" in zf.namelist()
+            assert "public_key.pem" in zf.namelist()
 
     async def test_text_too_large(self, client):
         """Cover certificates.py:28 — text exceeds max size."""

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from typing import Any
@@ -12,6 +13,11 @@ from fastapi.responses import StreamingResponse
 
 from inkprint.schemas.certificate import LeakScanRequest, LeakScanResponse
 from inkprint.services import certificate_service, leak_service
+
+# Terminal job states — the stream closes once one is reached.
+_TERMINAL = {"complete", "error"}
+# How long to wait for the next progress event before re-polling the DB.
+_STREAM_POLL_TIMEOUT = 15.0
 
 router = APIRouter()
 
@@ -53,18 +59,54 @@ async def get_leak_scan(scan_id: UUID) -> dict[str, Any]:
 
 @router.get("/leak-scan/{scan_id}/stream")
 async def stream_leak_scan(scan_id: UUID) -> StreamingResponse:
-    """Stream the current scan status via SSE."""
+    """Stream live leak-scan progress via SSE.
+
+    Emits an initial snapshot, then one ``corpus_complete`` event per corpus as
+    the background scan finishes it, and a final ``complete``/``error`` event —
+    consuming the progress channel published by :func:`leak_service.run_scan`.
+    An already-finished scan emits its snapshot once and closes.
+    """
     record = await leak_service.get_scan(str(scan_id))
     if record is None:
         raise HTTPException(status_code=404, detail="Scan not found")
 
-    async def event_generator() -> AsyncIterator[str]:
-        payload = {
-            "scan_id": str(scan_id),
-            "status": record["status"],
-            "hit_count": record["hit_count"],
-            "results": record["results"],
+    sid = str(scan_id)
+
+    def _snapshot(rec: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "type": "status",
+            "scan_id": sid,
+            "status": rec["status"],
+            "hit_count": rec["hit_count"],
+            "results": rec["results"],
         }
-        yield f"data: {json.dumps(payload)}\n\n"
+
+    async def event_generator() -> AsyncIterator[str]:
+        # Subscribe *before* re-checking status so no event fired between the
+        # initial read and subscription is lost.
+        async with leak_service.progress_subscription(sid) as queue:
+            current = await leak_service.get_scan(sid)
+            if current is None:
+                return
+            yield f"data: {json.dumps(_snapshot(current))}\n\n"
+            if current["status"] in _TERMINAL:
+                return
+
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=_STREAM_POLL_TIMEOUT)
+                except TimeoutError:
+                    # Fallback: re-poll the DB so a client still terminates even
+                    # if the publishing worker died (reaper will finish the job).
+                    latest = await leak_service.get_scan(sid)
+                    if latest is None:
+                        return
+                    yield f"data: {json.dumps(_snapshot(latest))}\n\n"
+                    if latest["status"] in _TERMINAL:
+                        return
+                    continue
+                yield f"data: {json.dumps(event)}\n\n"
+                if event.get("type") in ("complete", "error"):
+                    return
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

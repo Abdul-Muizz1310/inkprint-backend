@@ -37,6 +37,26 @@ class LeakScanJob(Base):
     completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
+class LeakScanCache(Base):
+    """Cached per-corpus scan result, keyed by (content_hash, corpus, snapshot).
+
+    Implements spec invariant #3: re-scanning the same text against the same
+    corpus snapshot returns the cached result for 7 days instead of re-querying
+    the corpus. ``cache_key`` is the SHA-256 of ``content_hash:corpus:snapshot``
+    (see :func:`inkprint.leak.scanner.cache_key`).
+    """
+
+    __tablename__ = "leak_scan_cache"
+
+    cache_key: Mapped[str] = mapped_column(Text(), primary_key=True)
+    content_hash: Mapped[str] = mapped_column(Text(), nullable=False)
+    corpus: Mapped[str] = mapped_column(Text(), nullable=False)
+    snapshot: Mapped[str] = mapped_column(Text(), nullable=False)
+    # The verbatim corpus-result dict (corpus, hits, hit_count, snapshot, ...).
+    result: Mapped[dict[str, Any]] = mapped_column(SAJSON(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
+
+
 class LeakScanResult(Base):
     """One durable per-corpus result row for a finished scan."""
 

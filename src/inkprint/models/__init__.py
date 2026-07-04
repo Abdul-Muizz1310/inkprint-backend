@@ -9,13 +9,14 @@ from __future__ import annotations
 from inkprint.models.base import Base
 from inkprint.models.certificate import Certificate, DerivativeLink
 from inkprint.models.envelope import DossierEnvelope
-from inkprint.models.leak import LeakScanJob, LeakScanResult
+from inkprint.models.leak import LeakScanCache, LeakScanJob, LeakScanResult
 
 __all__ = [
     "Base",
     "Certificate",
     "DerivativeLink",
     "DossierEnvelope",
+    "LeakScanCache",
     "LeakScanJob",
     "LeakScanResult",
 ]

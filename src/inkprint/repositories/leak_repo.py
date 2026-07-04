@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from inkprint.leak.score import ScoreResult
-from inkprint.models.leak import LeakScanJob, LeakScanResult
+from inkprint.models.leak import LeakScanCache, LeakScanJob, LeakScanResult
+
+# Spec invariant #3: results are cached for 7 days.
+CACHE_TTL = timedelta(days=7)
 
 
 def _job_to_record(job: LeakScanJob) -> dict[str, Any]:
@@ -106,3 +110,81 @@ async def save_results(
         job.results = summaries
         job.completed_at = now
     await session.flush()
+
+
+async def get_cached_result(
+    session: AsyncSession,
+    *,
+    cache_key: str,
+    now: datetime | None = None,
+) -> dict[str, Any] | None:
+    """Return a fresh (< 7-day) cached corpus result, or None."""
+    row = await session.get(LeakScanCache, cache_key)
+    if row is None:
+        return None
+    created = row.created_at
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=UTC)
+    if (now or datetime.now(UTC)) - created > CACHE_TTL:
+        return None
+    return dict(row.result)
+
+
+async def put_cached_result(
+    session: AsyncSession,
+    *,
+    cache_key: str,
+    content_hash: str,
+    corpus: str,
+    snapshot: str,
+    result: dict[str, Any],
+) -> None:
+    """Insert or refresh a cached corpus result (upsert by cache_key)."""
+    now = datetime.now(UTC)
+    existing = await session.get(LeakScanCache, cache_key)
+    if existing is not None:
+        existing.result = result
+        existing.snapshot = snapshot
+        existing.content_hash = content_hash
+        existing.corpus = corpus
+        existing.created_at = now
+    else:
+        session.add(
+            LeakScanCache(
+                cache_key=cache_key,
+                content_hash=content_hash,
+                corpus=corpus,
+                snapshot=snapshot,
+                result=result,
+                created_at=now,
+            )
+        )
+    await session.flush()
+
+
+async def reap_stale_jobs(
+    session: AsyncSession,
+    *,
+    max_age: timedelta,
+    now: datetime | None = None,
+) -> int:
+    """Transition orphaned ``pending``/``running`` jobs older than ``max_age`` to ``error``.
+
+    Returns the number of jobs reaped. Guarantees clients always reach a
+    terminal state even if the worker was suspended/redeployed mid-scan
+    (spec/reliability finding REL-2).
+    """
+    cutoff = (now or datetime.now(UTC)) - max_age
+    stale = (
+        await session.scalars(
+            select(LeakScanJob).where(
+                LeakScanJob.status.in_(("pending", "running")),
+                LeakScanJob.created_at < cutoff,
+            )
+        )
+    ).all()
+    for job in stale:
+        job.status = "error"
+        job.completed_at = now or datetime.now(UTC)
+    await session.flush()
+    return len(stale)
