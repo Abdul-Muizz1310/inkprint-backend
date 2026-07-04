@@ -29,31 +29,39 @@ class TestHuggingFaceScan:
         """Empty text (after strip) returns early with no hits."""
         from inkprint.leak.huggingface import scan_huggingface
 
-        result = await scan_huggingface("   ")
+        result = await scan_huggingface("   ", 0)
         assert result == {"corpus": "huggingface", "hits": [], "hit_count": 0}
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_successful_200_with_rows(self):
-        """200 response with rows produces hits."""
+    async def test_near_duplicate_row_is_a_scored_hit(self):
+        """A row whose text near-duplicates the query is a hit with a real score;
+        a dissimilar row is gated out (no longer a hardcoded 0.5 for every row)."""
+        from inkprint.fingerprint.simhash import compute_simhash
         from inkprint.leak.huggingface import scan_huggingface
 
+        query = "the confidential draft that leaked verbatim into a public dataset row " * 3
+        simhash = compute_simhash(query)
         respx.get("https://datasets-server.huggingface.co/search").mock(
             return_value=httpx.Response(
                 200,
                 json={
                     "rows": [
-                        {"dataset": "bigcode/the-stack"},
-                        {"dataset": "allenai/c4"},
+                        {"dataset": "leaky/corpus", "text": query},
+                        {"dataset": "unrelated/corpus", "text": "async event loops schedule work"},
                     ]
                 },
             )
         )
-        result = await scan_huggingface("Hello world test text")
+        from inkprint.leak.similarity import LEAK_HAMMING_THRESHOLD
+
+        result = await scan_huggingface(query, simhash)
         assert result["corpus"] == "huggingface"
-        assert result["hit_count"] == 2
-        assert result["hits"][0]["url"] == "bigcode/the-stack"
-        assert result["hits"][1]["url"] == "allenai/c4"
+        assert result["hit_count"] == 1
+        assert result["hits"][0]["url"] == "leaky/corpus"
+        # A real, near-zero Hamming distance from actual content — not 0.5.
+        assert result["hits"][0]["hamming"] <= LEAK_HAMMING_THRESHOLD
+        assert result["hits"][0]["score"] > 0.8
 
     @pytest.mark.asyncio
     @respx.mock
@@ -64,7 +72,7 @@ class TestHuggingFaceScan:
         respx.get("https://datasets-server.huggingface.co/search").mock(
             return_value=httpx.Response(500)
         )
-        result = await scan_huggingface("some text")
+        result = await scan_huggingface("some text", 0)
         assert result["hit_count"] == 0
 
     @pytest.mark.asyncio
@@ -76,7 +84,7 @@ class TestHuggingFaceScan:
         respx.get("https://datasets-server.huggingface.co/search").mock(
             side_effect=httpx.TimeoutException("timed out")
         )
-        result = await scan_huggingface("some text")
+        result = await scan_huggingface("some text", 0)
         assert result["hit_count"] == 0
 
     @pytest.mark.asyncio
@@ -88,7 +96,7 @@ class TestHuggingFaceScan:
         respx.get("https://datasets-server.huggingface.co/search").mock(
             side_effect=httpx.ConnectError("connection refused")
         )
-        result = await scan_huggingface("some text")
+        result = await scan_huggingface("some text", 0)
         assert result["hit_count"] == 0
 
 
@@ -104,25 +112,36 @@ class TestTheStackScan:
         """Empty text returns early."""
         from inkprint.leak.the_stack import scan_the_stack
 
-        result = await scan_the_stack("   ")
+        result = await scan_the_stack("   ", 0)
         assert result == {"corpus": "the_stack_v2", "hits": [], "hit_count": 0}
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_200_with_rows(self):
-        """200 response produces hits."""
+    async def test_near_duplicate_row_is_a_scored_hit(self):
+        """A row near-duplicating the query is a scored hit; a dissimilar row is gated out."""
+        from inkprint.fingerprint.simhash import compute_simhash
         from inkprint.leak.the_stack import scan_the_stack
 
+        query = "def leaked_function(x):\n    return x * 42  # copied verbatim into the stack " * 2
+        simhash = compute_simhash(query)
         url = "https://huggingface.co/api/datasets/bigcode/the-stack-v2/search"
         respx.get(url).mock(
             return_value=httpx.Response(
                 200,
-                json={"rows": [{"url": "https://github.com/foo/bar"}]},
+                json={
+                    "rows": [
+                        {"url": "https://github.com/foo/bar", "content": query},
+                        {"url": "https://github.com/x/y", "content": "print('unrelated')"},
+                    ]
+                },
             )
         )
-        result = await scan_the_stack("Hello world")
+        from inkprint.leak.similarity import LEAK_HAMMING_THRESHOLD
+
+        result = await scan_the_stack(query, simhash)
         assert result["hit_count"] == 1
         assert result["hits"][0]["url"] == "https://github.com/foo/bar"
+        assert result["hits"][0]["hamming"] <= LEAK_HAMMING_THRESHOLD
 
     @pytest.mark.asyncio
     @respx.mock
@@ -133,7 +152,7 @@ class TestTheStackScan:
         url = "https://huggingface.co/api/datasets/bigcode/the-stack-v2/search"
         respx.get(url).mock(return_value=httpx.Response(401))
         with pytest.raises(PermissionError, match="HF token"):
-            await scan_the_stack("test text")
+            await scan_the_stack("test text", 0)
 
     @pytest.mark.asyncio
     @respx.mock
@@ -144,7 +163,7 @@ class TestTheStackScan:
         url = "https://huggingface.co/api/datasets/bigcode/the-stack-v2/search"
         respx.get(url).mock(return_value=httpx.Response(403))
         with pytest.raises(PermissionError, match="TOS not accepted"):
-            await scan_the_stack("test text")
+            await scan_the_stack("test text", 0)
 
     @pytest.mark.asyncio
     @respx.mock
@@ -154,7 +173,7 @@ class TestTheStackScan:
 
         url = "https://huggingface.co/api/datasets/bigcode/the-stack-v2/search"
         respx.get(url).mock(return_value=httpx.Response(500))
-        result = await scan_the_stack("test text")
+        result = await scan_the_stack("test text", 0)
         assert result["hit_count"] == 0
 
     @pytest.mark.asyncio
@@ -165,7 +184,7 @@ class TestTheStackScan:
 
         url = "https://huggingface.co/api/datasets/bigcode/the-stack-v2/search"
         respx.get(url).mock(side_effect=httpx.TimeoutException("timed out"))
-        result = await scan_the_stack("test text")
+        result = await scan_the_stack("test text", 0)
         assert result["hit_count"] == 0
 
 
@@ -187,21 +206,41 @@ class TestCommonCrawlScan:
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_200_with_lines(self):
-        """200 with content produces hits (lines 40-44)."""
+    async def test_200_json_cdx_with_warc_similarity_gate(self):
+        """A JSON CDX candidate whose fetched WARC content near-duplicates the
+        query is a scored hit; the old plaintext-URL-line behavior is gone."""
+        import json
+
+        from inkprint.fingerprint.simhash import compute_simhash
         from inkprint.leak.common_crawl import scan_common_crawl
 
-        cdx_url = "https://index.commoncrawl.org/CC-MAIN-2024-50-index"
-        respx.get(cdx_url).mock(
+        leaked = (
+            "some original passage that was copied verbatim into the common crawl snapshot " * 3
+        )
+        simhash = compute_simhash(leaked)
+
+        respx.get(url__startswith="https://index.commoncrawl.org").mock(
             return_value=httpx.Response(
                 200,
-                text="https://example.com/page1\nhttps://example.com/page2\n",
+                text=json.dumps(
+                    {
+                        "url": "https://example.com/page1",
+                        "filename": "f.warc.gz",
+                        "offset": "0",
+                        "length": "500",
+                    }
+                ),
             )
         )
-        result = await scan_common_crawl("some test text for crawl", simhash=0)
-        assert result["hit_count"] == 2
+        respx.get(url__startswith="https://data.commoncrawl.org").mock(
+            return_value=httpx.Response(
+                200, content=b"WARC/1.0\r\n\r\nHTTP/1.1 200 OK\r\n\r\n" + leaked.encode()
+            )
+        )
+        result = await scan_common_crawl(leaked, simhash)
+        assert result["hit_count"] == 1
         assert result["hits"][0]["url"] == "https://example.com/page1"
-        assert result["hits"][1]["url"] == "https://example.com/page2"
+        assert result["hits"][0]["hamming"] == 0
 
     @pytest.mark.asyncio
     @respx.mock
@@ -347,14 +386,43 @@ class TestCertificateServiceEdges:
         assert result["checks"]["signature"] is False
         assert result["checks"]["hash"] is False
 
+    def test_verify_certificate_malformed_assertions_no_crash(self):
+        """Finding 02: malformed caller JSON yields a controlled invalid verdict.
+
+        Every one of these shapes exercises a distinct defensive guard in
+        verify_certificate. None may raise — each must return valid=False.
+        Reverting a guard (e.g. ``a.get("label")`` → ``a["label"]``) makes the
+        corresponding case raise and turns this test red.
+        """
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+        from inkprint.services.certificate_service import verify_certificate
+
+        pub = Ed25519PrivateKey.generate().public_key()
+        malformed_manifests = [
+            {"assertions": 123, "signature": {"value": "x"}},  # assertions not a list
+            {"assertions": ["x"], "signature": {"value": "x"}},  # item not a dict
+            {"assertions": [{}], "signature": {"value": "x"}},  # dict missing "label"
+            {  # hash assertion data is not a dict
+                "assertions": [{"label": "c2pa.hash.data", "data": "notadict"}],
+                "signature": {"value": "x"},
+            },
+        ]
+        for manifest in malformed_manifests:
+            result = verify_certificate(manifest, text="anything", public_key=pub)
+            assert result["valid"] is False, manifest
+
     @pytest.mark.asyncio
-    async def test_search_unknown_mode_returns_empty(self):
-        """An unrecognized search mode returns no results."""
+    async def test_search_unknown_mode_raises(self):
+        """An unrecognized search mode fails loudly (COR-1: exhaustive matching).
+
+        The service branch is exhaustive — an out-of-contract mode raises rather
+        than silently returning empty results. The HTTP boundary rejects unknown
+        modes with 422 before this is reached (see test_search.py)."""
         from inkprint.services.certificate_service import search_certificates
 
-        result = await search_certificates("anything", mode="nonsense")
-        assert result["total"] == 0
-        assert result["results"] == []
+        with pytest.raises(ValueError, match="Unknown search mode"):
+            await search_certificates("anything", mode="nonsense")  # type: ignore[arg-type]
 
 
 # ── platform/health.py ──────────────────────────────────────────────────────
@@ -932,33 +1000,36 @@ class TestR2Coverage:
 
 
 class TestEvalRunnerCoverage:
-    """Cover lines 54, 58-59 of evals/runner.py."""
+    """Cover evals/runner.py failure branches via the evaluator test seam.
 
-    def test_tamper_below_50_sets_exit_code(self):
-        """tamper_rejected < 50 sets exit_code = 1 (line 54).
+    The runner has no hardcoded results anymore; failures are injected through
+    the injectable evaluators (a clearly separate test seam), never by faking
+    the production result path."""
 
-        Line 54 is only hit if tamper_rejected < 50. Since the code
-        hardcodes tamper_rejected = 50, this line is dead code.
-        We test it by patching the local.
-        """
-        # The current code has tamper_rejected = 50, so line 54 is never hit.
-        # We can't easily test dead code without modifying it or using exec tricks.
-        # Instead, verify the skip_live_cc=False path covers lines 58-59.
+    def test_tamper_below_total_sets_exit_code(self):
+        """A tamper suite that rejects fewer than all manifests sets exit_code=1."""
+        from inkprint.evals.runner import run_all
+        from inkprint.evals.tamper_eval import TamperEvalResult
+
+        def _bad_tamper() -> TamperEvalResult:
+            return TamperEvalResult(rejected=48, total=50)
+
+        report = run_all(skip_live_cc=True, tamper_fn=_bad_tamper)
+        assert report.exit_code == 1
+        assert report.results["tamper"] == {"rejected": 48, "total": 50}
+
+    def test_run_all_with_output_includes_leak(self, tmp_path):
+        """run_all writes the report and includes the injected leak suite."""
+        from inkprint.evals.leak_eval import LeakEvalResult
         from inkprint.evals.runner import run_all
 
-        report = run_all(skip_live_cc=False, mock_results=True)
+        def _leak() -> LeakEvalResult:
+            return LeakEvalResult(
+                true_positives=19, false_positives=1, total_known=20, total_clean=20
+            )
+
+        report = run_all(leak_fn=_leak, output_path=tmp_path / "report.md")
         assert "leak" in report.suites_run
-        assert report.results["leak"]["true_positives"] == 18
-
-    def test_run_all_with_output(self, tmp_path):
-        """run_all writes report when output_path is set."""
-        from inkprint.evals.runner import run_all
-
-        report = run_all(
-            skip_live_cc=False,
-            mock_results=True,
-            output_path=tmp_path / "report.md",
-        )
         assert (tmp_path / "report.md").exists()
         content = (tmp_path / "report.md").read_text()
         assert "leak" in content

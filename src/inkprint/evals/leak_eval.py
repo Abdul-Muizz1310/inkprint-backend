@@ -8,6 +8,7 @@ from pathlib import Path
 
 import yaml
 
+from inkprint.fingerprint.simhash import compute_simhash
 from inkprint.leak.common_crawl import scan_common_crawl
 
 EVALS_DIR = Path(__file__).resolve().parents[3] / "evals"
@@ -42,12 +43,14 @@ def evaluate_leak_probe() -> LeakEvalResult:
     loop = asyncio.new_event_loop()
     try:
         for entry in known:
-            result = loop.run_until_complete(scan_common_crawl(entry["text"], simhash=0))
+            simhash = compute_simhash(entry["text"])
+            result = loop.run_until_complete(scan_common_crawl(entry["text"], simhash=simhash))
             if result["hit_count"] >= 1:
                 true_positives += 1
 
         for entry in clean:
-            result = loop.run_until_complete(scan_common_crawl(entry["text"], simhash=0))
+            simhash = compute_simhash(entry["text"])
+            result = loop.run_until_complete(scan_common_crawl(entry["text"], simhash=simhash))
             if result["hit_count"] >= 1:
                 false_positives += 1
     finally:

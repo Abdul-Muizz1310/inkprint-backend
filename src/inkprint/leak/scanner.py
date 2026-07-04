@@ -71,18 +71,46 @@ async def _run_corpus(
     return {"corpus": name, "hits": [], "hit_count": 0, "status": "error"}
 
 
+def _corpus_factories() -> dict[str, CorpusScanFn]:
+    """Resolve corpus scan functions at call time.
+
+    Built dynamically (not cached at import) so ``patch`` on the module-level
+    ``scan_common_crawl`` / ``scan_huggingface`` / ``scan_the_stack`` names takes
+    effect in tests.
+    """
+    return {
+        "common_crawl": scan_common_crawl,
+        "huggingface": scan_huggingface,
+        "the_stack_v2": scan_the_stack,
+    }
+
+
 def _build_tasks(
     corpora: list[str], text: str, simhash: int
 ) -> list[tuple[str, CorpusScanFn, tuple[Any, ...]]]:
-    """Build (name, factory, args) tuples for requested corpora."""
+    """Build (name, factory, args) tuples for requested corpora.
+
+    Every corpus client receives ``(text, simhash)`` so it can score candidates
+    by real SimHash Hamming distance rather than a hardcoded value.
+    """
+    factories = _corpus_factories()
     tasks: list[tuple[str, CorpusScanFn, tuple[Any, ...]]] = []
-    if "common_crawl" in corpora:
-        tasks.append(("common_crawl", scan_common_crawl, (text, simhash)))
-    if "huggingface" in corpora:
-        tasks.append(("huggingface", scan_huggingface, (text,)))
-    if "the_stack_v2" in corpora:
-        tasks.append(("the_stack_v2", scan_the_stack, (text,)))
+    for name in ("common_crawl", "huggingface", "the_stack_v2"):
+        if name in corpora:
+            tasks.append((name, factories[name], (text, simhash)))
     return tasks
+
+
+async def scan_one(corpus: str, text: str, simhash: int) -> dict[str, Any]:
+    """Run a single corpus scan with timeout/retry/graceful-degradation.
+
+    Used by the service layer to fan corpora out one at a time (for SSE
+    streaming and per-corpus caching) while reusing the same failure handling
+    as :func:`scan`.
+    """
+    validate_corpora([corpus])
+    factory = _corpus_factories()[corpus]
+    return await _run_corpus(corpus, factory, (text, simhash))
 
 
 async def scan(

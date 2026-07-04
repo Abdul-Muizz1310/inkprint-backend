@@ -24,7 +24,7 @@ class TestLeakScannerHappy:
         async def fake_scan_cc(text, simhash):
             return {"corpus": "common_crawl", "hits": [], "hit_count": 0}
 
-        async def fake_scan_hf(text):
+        async def fake_scan_hf(text, simhash):
             return {"corpus": "huggingface", "hits": [], "hit_count": 0}
 
         with (
@@ -45,10 +45,10 @@ class TestLeakScannerHappy:
         async def ok_cc(text, simhash):
             return {"corpus": "common_crawl", "hits": [], "hit_count": 0}
 
-        async def ok_hf(text):
+        async def ok_hf(text, simhash):
             return {"corpus": "huggingface", "hits": [], "hit_count": 0}
 
-        async def ok_stack(text):
+        async def ok_stack(text, simhash):
             return {"corpus": "the_stack_v2", "hits": [], "hit_count": 0}
 
         with (
@@ -72,7 +72,7 @@ class TestLeakScannerFailure:
         async def fake_scan_cc(text, simhash):
             return {"corpus": "common_crawl", "hits": [], "hit_count": 0}
 
-        async def fake_scan_stack(text):
+        async def fake_scan_stack(text, simhash):
             raise PermissionError("HF token not set")
 
         with (
@@ -94,7 +94,7 @@ class TestLeakScannerFailure:
             await asyncio.sleep(60)
             return {"corpus": "common_crawl", "hits": []}
 
-        async def fake_scan_hf(text):
+        async def fake_scan_hf(text, simhash):
             return {"corpus": "huggingface", "hits": [], "hit_count": 0}
 
         with (
@@ -111,7 +111,7 @@ class TestLeakScannerFailure:
         """TC-L-13: HuggingFace API error — retry once, then mark that corpus errored."""
         call_count = 0
 
-        async def rate_limited_hf(text):
+        async def rate_limited_hf(text, simhash):
             nonlocal call_count
             call_count += 1
             raise Exception("429 Too Many Requests")
