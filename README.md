@@ -9,12 +9,12 @@
 ![fastapi](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
 ![c2pa](https://img.shields.io/badge/C2PA-v2.2--aligned-5c2d91?style=flat-square)
 ![ed25519](https://img.shields.io/badge/Ed25519-signed-ff6f00?style=flat-square)
-![neon](https://img.shields.io/badge/Neon-pgvector-00e599?style=flat-square&logo=postgresql&logoColor=white)
+![neon](https://img.shields.io/badge/Neon-Postgres-00e599?style=flat-square&logo=postgresql&logoColor=white)
 ![r2](https://img.shields.io/badge/Cloudflare-R2-f38020?style=flat-square&logo=cloudflare&logoColor=white)
 [![ci](https://github.com/Abdul-Muizz1310/inkprint-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/Abdul-Muizz1310/inkprint-backend/actions/workflows/ci.yml)
 ![eval-fp](https://img.shields.io/badge/fingerprint-86%25-brightgreen?style=flat-square)
 ![eval-tamper](https://img.shields.io/badge/tamper-100%25-brightgreen?style=flat-square)
-![eval-leak](https://img.shields.io/badge/leak-%E2%89%A590%25-brightgreen?style=flat-square)
+![eval-leak](https://img.shields.io/badge/leak-live--only-lightgrey?style=flat-square)
 ![license](https://img.shields.io/badge/license-BUSL--1.1-lightgrey?style=flat-square)
 
 ---
@@ -189,7 +189,7 @@ src/inkprint/
 ├── platform/
 │   ├── health.py                   # /health, /version, /metrics, /public-key.pem
 │   ├── middleware.py               # X-Request-ID, CORS
-│   └── logging.py                  # structlog config
+│   └── logging.py                  # stdlib JSON logging config
 ├── core/
 │   ├── config.py                   # pydantic-settings from .env
 │   ├── db.py                       # async_sessionmaker + engine
@@ -238,7 +238,7 @@ src/inkprint/
 | **Blob storage** | Cloudflare R2 (S3-compatible) |
 | **Migrations** | Alembic, auto-applied via Render `preDeployCommand` |
 | **Leak detection** | Common Crawl CDX, HuggingFace datasets, The Stack v2 |
-| **Observability** | structlog, Prometheus |
+| **Observability** | stdlib structured JSON logging, Prometheus |
 | **Tests** | pytest-asyncio + in-memory SQLite |
 | **Lint / Types** | ruff + mypy |
 
@@ -246,7 +246,7 @@ src/inkprint/
 
 ## 📊 Observability
 
-Every request gets a unique `X-Request-ID` header. structlog emits structured JSON logs with request context. Prometheus `/metrics` endpoint exposes request latency, counts, and active connections.
+Every request gets a unique `X-Request-ID` header. The stdlib logging config emits structured JSON logs in production. Prometheus `/metrics` endpoint exposes request latency, counts, and active connections.
 
 ---
 
@@ -317,7 +317,7 @@ uv run pytest --cov=src/inkprint --cov-report=term-missing
 | **Eval: fingerprint (SimHash-only)** | **86%** (86/100, target >= 85%) |
 | **Eval: fingerprint (SimHash + embedding)** | **>= 90%** (target >= 90%) |
 | **Eval: tamper resilience** | **100%** (50/50) |
-| **Eval: leak detection** | **>= 90%** true-positive (target >= 18/20) |
+| **Eval: leak detection** | Live-only acceptance test (target >= 18/20 TP, <= 2 FP against live Common Crawl) — see [`evals/report.md`](evals/report.md); not yet run against production CDX |
 | **Methodology** | Red-first Spec-TDD — failing test before implementation |
 | **External I/O** | Mocked — in-memory SQLite, dependency-overridden fakes. No real Voyage / R2 / corpus calls in CI. |
 
@@ -347,7 +347,7 @@ Render free tier via [`render.yaml`](render.yaml). One-time setup:
 3. Copy the Deploy Hook URL → `gh secret set RENDER_DEPLOY_HOOK --body '<url>'`
 4. Push to `main` → CI lint/test/build → CI fires the hook → Render rebuilds → `preDeployCommand: alembic upgrade head` → new container goes live
 
-Database on Neon (`inkprint` branch) with pgvector enabled. Certificate archives stored in Cloudflare R2 under the `inkprint/` prefix.
+Database on Neon (`inkprint` branch). Semantic search ranks embeddings with pure-Python cosine over stored JSON vectors; a pgvector ANN index is an optional production optimization, not currently wired. Certificate archives are uploaded to Cloudflare R2 when `R2_*` is configured (best-effort; archival never blocks certificate creation).
 
 ---
 

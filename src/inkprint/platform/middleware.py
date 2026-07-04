@@ -11,7 +11,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 _PROD_ORIGINS = [
     "https://inkprint-frontend.vercel.app",
-    "https://bastion.vercel.app",
+    "https://bastion-six.vercel.app",
 ]
 
 

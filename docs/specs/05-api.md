@@ -82,7 +82,7 @@ Response 200: { results: [Certificate], total: int }
 
 - `X-Request-Id`: generate UUID if absent, echo in response, inject into structlog context.
 - `X-Platform-Token`: JWT validator (bastion integration). In `DEMO_MODE=true`, accept any token with warning log.
-- CORS: allowlist `inkprint-frontend.vercel.app`, `bastion.vercel.app`, `localhost:3000`.
+- CORS: allowlist `inkprint-frontend.vercel.app`, `bastion-six.vercel.app`, `localhost:3000`.
 - `MAX_TEXT_BYTES` enforced in Pydantic schema validators, not just at middleware.
 
 ## Test cases

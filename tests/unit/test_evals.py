@@ -26,44 +26,69 @@ def _cdx_reachable() -> bool:
 
 class TestEvalRunner:
     def test_tc_e_01_runner_exits_zero_on_pass(self):
-        """TC-E-01: run_evals.py exits 0 when all targets met."""
+        """TC-E-01: run_all drives the *real* fingerprint + tamper evaluators and
+        exits 0 when their measured numbers meet target."""
         from inkprint.evals.runner import run_all
 
-        # With mocked passing results
-        report = run_all(skip_live_cc=True, mock_results=True)
+        report = run_all(skip_live_cc=True)
         assert report.exit_code == 0
+        # Numbers come from the real evaluators, not hardcoded constants.
+        assert report.results["fingerprint"]["accuracy"] >= 0.85
+        assert report.results["tamper"] == {"rejected": 50, "total": 50}
 
     def test_tc_e_02_runner_exits_one_on_fail(self):
-        """TC-E-02: run_evals.py exits 1 when any target missed."""
+        """TC-E-02: run_all exits 1 when a suite misses its target.
+
+        The failure is injected through the evaluator test seam, not by faking
+        the production result path.
+        """
+        from inkprint.evals.fingerprint_eval import FingerprintEvalResult
         from inkprint.evals.runner import run_all
 
-        report = run_all(
-            skip_live_cc=True,
-            mock_results=True,
-            override_fingerprint_accuracy=0.50,  # below 0.90 target
-        )
+        def _bad_fp() -> FingerprintEvalResult:
+            return FingerprintEvalResult(accuracy=0.50, correct=50, total=100)
+
+        report = run_all(skip_live_cc=True, fingerprint_fn=_bad_fp)
         assert report.exit_code == 1
 
     def test_tc_e_03_skip_live_cc_flag(self):
         """TC-E-03: --skip-live-cc skips leak detection suite."""
         from inkprint.evals.runner import run_all
 
-        report = run_all(skip_live_cc=True, mock_results=True)
+        report = run_all(skip_live_cc=True)
         assert "leak" not in report.suites_run
 
     def test_tc_e_04_report_written(self, tmp_path):
-        """TC-E-04: Report is written with date, scores, pass/fail."""
+        """TC-E-04: Report is written with scores + pass/fail."""
         from inkprint.evals.runner import run_all
 
-        run_all(
-            skip_live_cc=True,
-            mock_results=True,
-            output_path=tmp_path / "report.md",
-        )
+        run_all(skip_live_cc=True, output_path=tmp_path / "report.md")
         assert (tmp_path / "report.md").exists()
         content = (tmp_path / "report.md").read_text()
         assert "fingerprint" in content.lower()
         assert "pass" in content.lower() or "fail" in content.lower()
+
+    def test_leak_suite_wired_to_real_evaluator(self):
+        """run_all invokes the injected leak evaluator and applies the targets."""
+        from inkprint.evals.leak_eval import LeakEvalResult
+        from inkprint.evals.runner import run_all
+
+        def _good_leak() -> LeakEvalResult:
+            return LeakEvalResult(
+                true_positives=19, false_positives=1, total_known=20, total_clean=20
+            )
+
+        report = run_all(leak_fn=_good_leak)
+        assert "leak" in report.suites_run
+        assert report.results["leak"]["true_positives"] == 19
+        assert report.exit_code == 0
+
+        def _bad_leak() -> LeakEvalResult:
+            return LeakEvalResult(
+                true_positives=5, false_positives=9, total_known=20, total_clean=20
+            )
+
+        assert run_all(leak_fn=_bad_leak).exit_code == 1
 
 
 # ── Fingerprint eval dataset ─────────────────────────────────────────────────
@@ -125,46 +150,28 @@ class TestLeakEvalData:
 
     @pytest.mark.slow
     def test_tc_e_09_true_positive_rate(self):
-        """TC-E-09: True positive rate >= 18/20.
+        """TC-E-09: True positive rate >= 18/20 against *live* Common Crawl.
 
-        When the CC CDX API is unreachable, we mock scan_common_crawl to
-        return hits for known-leaked entries and no hits for clean entries,
-        verifying the eval harness itself is wired correctly.
+        This is an acceptance test: it runs the real leak evaluator or is
+        skipped honestly when CDX is unreachable. It never fabricates a passing
+        result (see refinement finding 02 [HIGH] on the mocked-perfect result).
         """
-        if _cdx_reachable():
-            from inkprint.evals.leak_eval import evaluate_leak_probe
+        if not _cdx_reachable():
+            pytest.skip("Common Crawl CDX API unreachable; leak acceptance is live-only")
 
-            result = evaluate_leak_probe()
-        else:
-            from unittest.mock import patch
+        from inkprint.evals.leak_eval import evaluate_leak_probe
 
-            call_count = 0
-
-            async def _mock_scan(text: str, simhash: int = 0) -> dict:
-                nonlocal call_count
-                call_count += 1
-                # First 20 calls are known-leaked → return hits
-                if call_count <= 20:
-                    return {
-                        "corpus": "common_crawl",
-                        "hits": [{"url": "http://mock"}],
-                        "hit_count": 1,
-                    }
-                # Next 20 calls are clean → no hits
-                return {"corpus": "common_crawl", "hits": [], "hit_count": 0}
-
-            with patch("inkprint.evals.leak_eval.scan_common_crawl", new=_mock_scan):
-                from inkprint.evals.leak_eval import evaluate_leak_probe
-
-                result = evaluate_leak_probe()
-
+        result = evaluate_leak_probe()
         assert result.true_positives >= 18, (
             f"True positive rate {result.true_positives}/20 < 18/20 target"
         )
 
     @pytest.mark.slow
     def test_tc_e_10_false_positive_rate(self):
-        """TC-E-10: False positive rate <= 2/20."""
+        """TC-E-10: False positive rate <= 2/20 against live Common Crawl."""
+        if not _cdx_reachable():
+            pytest.skip("Common Crawl CDX API unreachable; leak acceptance is live-only")
+
         from inkprint.evals.leak_eval import evaluate_leak_probe
 
         result = evaluate_leak_probe()
