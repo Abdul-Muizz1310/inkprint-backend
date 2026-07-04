@@ -33,10 +33,22 @@ def _resolve_database_url() -> str:
 
 
 def get_engine() -> AsyncEngine:
-    """Get or create the process-wide async engine."""
+    """Get or create the process-wide async engine.
+
+    ``pool_pre_ping`` + ``pool_recycle`` are essential on Neon/Render serverless:
+    idle compute scales to zero and silently drops pooled server connections, so
+    the first request after an idle window would otherwise hit a dead connection
+    and 500. Pre-ping detects and transparently replaces stale connections; the
+    recycle window caps how long a connection is trusted (P9).
+    """
     global _engine
     if _engine is None:
-        _engine = create_async_engine(_resolve_database_url(), echo=False)
+        _engine = create_async_engine(
+            _resolve_database_url(),
+            echo=False,
+            pool_pre_ping=True,
+            pool_recycle=300,
+        )
     return _engine
 
 

@@ -45,10 +45,21 @@ def _clean_envelope_store():
 
 @pytest.fixture(autouse=True)
 def _mock_embedding():
-    """Default: voyage embedding succeeds with a deterministic vector."""
-    with patch(
-        "inkprint.fingerprint.embed.compute_embedding",
-        new=AsyncMock(return_value=[0.1] * 768),
+    """Default: voyage embedding succeeds with a deterministic vector.
+
+    Patches both the single-text and batched entry points, since the single-cert
+    path uses ``compute_embedding`` and the batch path uses ``compute_embeddings``.
+    """
+
+    async def _one(text: str) -> list[float]:
+        return [0.1] * 768
+
+    async def _many(texts: list[str]) -> list[list[float]]:
+        return [[0.1] * 768 for _ in texts]
+
+    with (
+        patch("inkprint.fingerprint.embed.compute_embedding", new=AsyncMock(side_effect=_one)),
+        patch("inkprint.fingerprint.embed.compute_embeddings", new=AsyncMock(side_effect=_many)),
     ):
         yield
 
@@ -151,20 +162,20 @@ class TestBatchCreateCertificates:
         assert resp.status_code == 422
 
     async def test_tc_b_10_embedding_failure_rolls_back(self, client: AsyncClient) -> None:
-        """TC-B-10: Embedding API failure mid-batch → 503 with no commits."""
+        """TC-B-10: Embedding API failure → 503 with no commits.
+
+        The batch is embedded in a single call (OPT-1), so an embedding failure
+        is all-or-nothing by construction: nothing is persisted.
+        """
         async with session_scope() as s:
             baseline = await certificate_repo.count(s)
-        call_count = {"n": 0}
 
-        async def flaky_embed(text: str) -> list[float]:
-            call_count["n"] += 1
-            if call_count["n"] == 3:
-                raise RuntimeError("voyage down")
-            return [0.1] * 768
+        async def failing_batch(texts: list[str]) -> list[list[float]]:
+            raise RuntimeError("voyage down")
 
         with patch(
-            "inkprint.fingerprint.embed.compute_embedding",
-            new=AsyncMock(side_effect=flaky_embed),
+            "inkprint.fingerprint.embed.compute_embeddings",
+            new=AsyncMock(side_effect=failing_batch),
         ):
             resp = await client.post(
                 "/certificates/batch",

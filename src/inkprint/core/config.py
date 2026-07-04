@@ -29,11 +29,6 @@ class Settings(BaseSettings):
     voyage_api_key: str = ""
     voyage_model: str = "voyage-3-lite"
 
-    # ─── LLM (optional) ─────────────────────────────
-    openrouter_api_key: str = ""
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    openrouter_model_primary: str = ""
-
     # ─── Cloudflare R2 ──────────────────────────────
     r2_account_id: str = ""
     r2_access_key_id: str = ""
@@ -53,8 +48,20 @@ class Settings(BaseSettings):
     derivative_cosine_threshold: float = 0.85
     max_text_bytes: int = 500_000
 
+    # ─── Frontend ───────────────────────────────────
+    # Base URL the QR code and verify links point at. Defaults to the deployed
+    # Vercel frontend; override via env for other environments.
+    frontend_base_url: str = "https://inkprint-frontend.vercel.app"
+
+    # ─── Rate limiting ──────────────────────────────
+    # Per-IP fixed-window throttle on the write/scan endpoints. On by default so
+    # a demo-mode (auth-bypassed) deployment can't be driven to burn unbounded
+    # paid Voyage-embedding / corpus-scan calls.
+    rate_limit_enabled: bool = True
+    rate_limit_per_minute: int = 60
+
     # ─── Platform ───────────────────────────────────
-    bastion_public_key_url: str = "https://bastion.vercel.app/api/public-key"
+    bastion_public_key_url: str = "https://bastion-six.vercel.app/api/public-key"
     demo_mode: bool = True
 
     @property

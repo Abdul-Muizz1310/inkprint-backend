@@ -123,11 +123,14 @@ def test_public_key_fetched_from_url_and_cached(monkeypatch: pytest.MonkeyPatch)
         def json(self) -> dict[str, str]:
             return {"kid": "test", "algorithm": "EdDSA", "publicKey": pub_b64}
 
-    def _fake_get(url: str, timeout: float) -> _Resp:
-        calls["n"] += 1
-        return _Resp()
+    class _FakeAsyncClient:
+        async def get(self, url: str) -> _Resp:
+            calls["n"] += 1
+            return _Resp()
 
-    monkeypatch.setattr(platform_token.httpx, "get", _fake_get)
+    # The key fetch is now awaited via a module-level AsyncClient (P10): no
+    # synchronous httpx.get on the event loop.
+    monkeypatch.setattr(platform_token, "_get_http_client", lambda: _FakeAsyncClient())
     client = _make_app(demo_mode=False)
     headers = {"X-Platform-Token": _token(priv_pem)}
     assert client.get("/protected", headers=headers).status_code == 200

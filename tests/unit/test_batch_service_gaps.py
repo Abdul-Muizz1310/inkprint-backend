@@ -33,8 +33,8 @@ class TestLangdetectFallback:
         priv, pub, kid = keys
         with (
             patch(
-                "inkprint.fingerprint.embed.compute_embedding",
-                new=AsyncMock(return_value=[0.1] * 768),
+                "inkprint.fingerprint.embed.compute_embeddings",
+                new=AsyncMock(return_value=[[0.1] * 768]),
             ),
             patch("langdetect.detect", side_effect=RuntimeError("no features")),
         ):
@@ -58,8 +58,8 @@ class TestVerifyBatchEmbeddingFallback:
         priv, pub, kid = keys
         # Seed one cert with a stored [0.1]*768 embedding.
         with patch(
-            "inkprint.fingerprint.embed.compute_embedding",
-            new=AsyncMock(return_value=[0.1] * 768),
+            "inkprint.fingerprint.embed.compute_embeddings",
+            new=AsyncMock(return_value=[[0.1] * 768]),
         ):
             created = await batch_service.create_batch(
                 [{"text": "alpha", "author": "a@b.com", "metadata": None}],
@@ -90,8 +90,8 @@ class TestVerifyBatchEmbeddingFallback:
         priv, pub, kid = keys
         # Seed with zero embedding.
         with patch(
-            "inkprint.fingerprint.embed.compute_embedding",
-            new=AsyncMock(return_value=[0.0] * 768),
+            "inkprint.fingerprint.embed.compute_embeddings",
+            new=AsyncMock(return_value=[[0.0] * 768]),
         ):
             created = await batch_service.create_batch(
                 [{"text": "beta gamma", "author": "a@b.com", "metadata": None}],

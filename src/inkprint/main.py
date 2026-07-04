@@ -29,6 +29,7 @@ from inkprint.core.config import Settings, get_settings
 from inkprint.platform.health import router as health_router
 from inkprint.platform.middleware import add_middleware
 from inkprint.platform.platform_token import install_platform_token
+from inkprint.platform.rate_limit import install_rate_limit
 
 
 def _load_keys() -> tuple[Any, Any, str]:
@@ -65,9 +66,24 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     zero-config local default.
     """
     from inkprint.core.db import get_engine, init_models
+    from inkprint.services import leak_service
 
     if get_engine().dialect.name == "sqlite":
         await init_models()
+
+    # Reap any leak scans orphaned in pending/running by a previous
+    # suspension/crash so clients always reach a terminal state (REL-2).
+    try:
+        reaped = await leak_service.reap_stale_scans()
+        if reaped:
+            import logging
+
+            logging.getLogger(__name__).info("Reaped %d orphaned leak scan(s)", reaped)
+    except Exception:  # pragma: no cover - startup best-effort
+        import logging
+
+        logging.getLogger(__name__).warning("Leak-scan reaper failed on startup", exc_info=True)
+
     yield
 
 
@@ -91,6 +107,11 @@ def create_app() -> FastAPI:
 
     # Middleware (must be added before routers for CORS to work on all routes)
     add_middleware(application)
+    install_rate_limit(
+        application,
+        per_minute=settings.rate_limit_per_minute,
+        enabled=settings.rate_limit_enabled,
+    )
     install_platform_token(application, demo_mode=get_settings().demo_mode)
 
     # Prometheus metrics — exposes GET /metrics

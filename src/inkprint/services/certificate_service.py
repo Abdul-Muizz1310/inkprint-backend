@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from inkprint.core.db import session_scope
@@ -23,6 +23,25 @@ from inkprint.provenance.signer import sign, verify
 from inkprint.repositories import certificate_repo
 
 logger = logging.getLogger(__name__)
+
+
+async def _archive_to_r2(key: str, text: str) -> str | None:
+    """Best-effort upload of the certificate text to Cloudflare R2.
+
+    Returns the R2 storage key when the upload succeeds, or None when R2 is
+    unconfigured (the common demo case) or the upload fails — archival is never
+    fatal to certificate creation. The synchronous boto3 call is offloaded to a
+    thread so it never blocks the event loop.
+    """
+    try:
+        import asyncio
+
+        from inkprint.core import r2
+
+        return await asyncio.to_thread(r2.upload_text, key, text)
+    except Exception:
+        logger.debug("R2 archival skipped/failed for %s", key, exc_info=True)
+        return None
 
 
 async def _compute_embedding_or_zero(text: str) -> list[float]:
@@ -85,6 +104,11 @@ async def create_certificate(
     )
     validate_manifest(manifest)
 
+    # Archive the source text to R2 when configured; fall back to the logical
+    # key otherwise so ``storage_key`` always reflects where the blob lives.
+    default_key = f"certificates/{cert_id}.json"
+    storage_key = await _archive_to_r2(default_key, text) or default_key
+
     record = {
         "id": str(cert_id),
         "author": author,
@@ -97,7 +121,7 @@ async def create_certificate(
         "issued_at": issued_at,
         "signature": signature_b64,
         "manifest": manifest,
-        "storage_key": f"certificates/{cert_id}.json",
+        "storage_key": storage_key,
         "metadata": metadata,
     }
     async with session_scope() as session:
@@ -125,17 +149,26 @@ def verify_certificate(
     checks: dict[str, bool] = {}
     warnings: list[str] = []
 
-    sig_block = manifest.get("signature", {})
-    sig_value = sig_block.get("value", "")
+    sig_block = manifest.get("signature")
+    sig_value = sig_block.get("value", "") if isinstance(sig_block, dict) else ""
 
-    hash_assertion = None
-    for a in manifest.get("assertions", []):
-        if a["label"] == "c2pa.hash.data":
-            hash_assertion = a
-            break
+    # Caller-supplied JSON: never index blindly. A malformed assertion produces
+    # a controlled "invalid" verdict, never an unhandled 500.
+    hash_assertion: dict[str, Any] | None = None
+    assertions = manifest.get("assertions", [])
+    if isinstance(assertions, list):
+        for a in assertions:
+            if isinstance(a, dict) and a.get("label") == "c2pa.hash.data":
+                hash_assertion = a
+                break
 
-    if hash_assertion and sig_value:
-        manifest_hash = hash_assertion["data"]["hash"]
+    manifest_hash = None
+    if hash_assertion is not None:
+        data = hash_assertion.get("data")
+        if isinstance(data, dict):
+            manifest_hash = data.get("hash")
+
+    if manifest_hash is not None and sig_value:
         if text is not None:
             canonical = canonicalize(text)
             content_hash = hashlib.sha256(canonical).hexdigest()
@@ -193,12 +226,16 @@ async def diff_certificate(
     }
 
 
-async def search_certificates(text: str, mode: str) -> dict[str, Any]:
+async def search_certificates(text: str, mode: Literal["exact", "semantic"]) -> dict[str, Any]:
     """Search certificates by hash (exact) or embedding (semantic).
 
     Exact mode matches the canonical SHA-256. Semantic mode embeds the query
     and ranks stored certificates by cosine similarity; without an embedding
     backend the query vector is zero and semantic search returns nothing.
+
+    ``mode`` is exhaustively matched: an unexpected value fails loudly rather
+    than silently returning empty results (the HTTP boundary already rejects
+    unknown modes with 422).
     """
     async with session_scope() as session:
         if mode == "exact":
@@ -209,6 +246,6 @@ async def search_certificates(text: str, mode: str) -> dict[str, Any]:
             query_embedding = await _compute_embedding_or_zero(text)
             results = await certificate_repo.search_semantic(session, query_embedding)
         else:
-            results = []
+            raise ValueError(f"Unknown search mode: {mode!r}")
 
     return {"results": results, "total": len(results)}

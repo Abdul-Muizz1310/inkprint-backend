@@ -32,16 +32,18 @@ class EmbeddingServiceUnavailableError(RuntimeError):
     """Raised when the embedding backend fails mid-batch."""
 
 
-async def _compute_embedding_or_raise(text: str) -> list[float]:
-    """Compute an embedding; raise EmbeddingServiceUnavailableError on failure.
+async def _compute_embeddings_or_raise(texts: list[str]) -> list[list[float]]:
+    """Embed all batch texts in one call; raise on failure.
 
     Unlike the single-cert path (which falls back to a zero vector), the batch
-    path prefers failing loud to preserve all-or-nothing semantics.
+    path prefers failing loud to preserve all-or-nothing semantics. Sending the
+    whole batch in a single Voyage request (rather than one call per item) keeps
+    latency and API-quota flat in the batch size (OPT-1).
     """
     try:
-        from inkprint.fingerprint.embed import compute_embedding
+        from inkprint.fingerprint.embed import compute_embeddings
 
-        return await compute_embedding(text)
+        return await compute_embeddings(texts)
     except Exception as exc:
         raise EmbeddingServiceUnavailableError(str(exc)) from exc
 
@@ -66,7 +68,11 @@ async def create_batch(
     pending_records: list[dict[str, Any]] = []
     response_items: list[dict[str, Any]] = []
 
-    for item in items:
+    # One batched embedding request for the whole batch (OPT-1). All-or-nothing:
+    # a failure here raises before anything is persisted.
+    embeddings = await _compute_embeddings_or_raise([item["text"] for item in items])
+
+    for item, embedding in zip(items, embeddings, strict=True):
         text: str = item["text"]
         author: str = item["author"]
         metadata: dict[str, str] | None = item.get("metadata")
@@ -75,7 +81,6 @@ async def create_batch(
         content_hash = hashlib.sha256(canonical).hexdigest()
         signature_b64 = sign(canonical, private_key)
         simhash_val = compute_simhash(text)
-        embedding = await _compute_embedding_or_raise(text)
 
         language: str | None = None
         try:

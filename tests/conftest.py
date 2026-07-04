@@ -8,6 +8,14 @@ creates the schema from the ORM metadata, and disposes it afterward.
 
 from __future__ import annotations
 
+import os
+
+# Disable the per-IP rate limiter for the test suite: many tests hammer the same
+# endpoints from a single (test) client IP and would otherwise trip the throttle.
+# The limiter has its own dedicated unit test (test_rate_limit.py). Set before
+# any app import so create_app reads it.
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
+
 from collections.abc import AsyncIterator
 
 import pytest

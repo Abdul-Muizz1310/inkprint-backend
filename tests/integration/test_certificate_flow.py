@@ -128,7 +128,10 @@ class TestCertificates:
 
     @pytest.mark.asyncio
     async def test_tc_a_09_download(self, client):
-        """TC-A-09: GET /certificates/{id}/download returns original text."""
+        """TC-A-09: GET /certificates/{id}/download returns a zip of manifest + key + text."""
+        import io
+        import zipfile
+
         create = await client.post(
             "/certificates",
             json={"text": "Original text here", "author": "a@b.com"},
@@ -136,7 +139,12 @@ class TestCertificates:
         cert_id = create.json()["id"]
         resp = await client.get(f"/certificates/{cert_id}/download")
         assert resp.status_code == 200
-        assert "Original text here" in resp.text
+        assert resp.headers["content-type"] == "application/zip"
+        with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+            names = set(zf.namelist())
+            assert names == {"manifest.json", "public_key.pem", "content.txt"}
+            assert zf.read("content.txt").decode() == "Original text here"
+            assert b"BEGIN PUBLIC KEY" in zf.read("public_key.pem")
 
 
 # ── Verify ───────────────────────────────────────────────────────────────────
@@ -285,7 +293,20 @@ class TestLeakScanAPI:
 
     @pytest.mark.asyncio
     async def test_tc_a_19_scan_sse(self, client):
-        """TC-A-19: GET /leak-scan/{id}/stream returns SSE content type."""
+        """TC-A-19: GET /leak-scan/{id}/stream streams SSE and closes on a
+        terminal scan.
+
+        ``run_scan`` is stubbed to a no-op by this module's autouse fixture, so
+        the job is driven to a terminal state directly; otherwise the (correct)
+        stream would poll a permanently-``pending`` job forever. Live per-corpus
+        event streaming is covered by
+        ``test_remaining_coverage.py::TestLeakScanStreamEndpoint``.
+        """
+        from uuid import UUID
+
+        from inkprint.core.db import session_scope
+        from inkprint.repositories import leak_repo
+
         create = await client.post(
             "/certificates",
             json={"text": "Test", "author": "a@b.com"},
@@ -296,9 +317,14 @@ class TestLeakScanAPI:
             json={"certificate_id": cert_id},
         )
         scan_id = scan_resp.json()["scan_id"]
+
+        async with session_scope() as s:
+            await leak_repo.set_status(s, UUID(scan_id), "complete")
+
         resp = await client.get(f"/leak-scan/{scan_id}/stream")
         assert resp.status_code == 200
         assert "text/event-stream" in resp.headers.get("content-type", "")
+        assert '"status": "complete"' in resp.text
 
     @pytest.mark.asyncio
     async def test_tc_a_20_scan_nonexistent_cert(self, client):
