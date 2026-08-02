@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import JSON as SAJSON
-from sqlalchemy import ForeignKey, Integer, Numeric, Text, Uuid, func
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from inkprint.models.base import Base
@@ -39,7 +39,9 @@ class Certificate(Base):
     embedding: Mapped[str] = mapped_column(Text(), nullable=False)
     content_len: Mapped[int] = mapped_column(Integer(), nullable=False)
     language: Mapped[str | None] = mapped_column(Text(), nullable=True)
-    issued_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
+    issued_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
     signature: Mapped[str] = mapped_column(Text(), nullable=False)
     manifest: Mapped[dict[str, Any]] = mapped_column(SAJSON(), nullable=False)
     storage_key: Mapped[str | None] = mapped_column(Text(), nullable=True)

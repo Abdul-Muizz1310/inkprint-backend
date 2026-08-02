@@ -7,12 +7,18 @@ effect (Ed25519 signing, persistence) happens in the service layer.
 
 from __future__ import annotations
 
+import functools
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import jsonschema
+
 CLAIM_GENERATOR = "bastion/dossier-envelope"
+
+_ENVELOPE_SCHEMA_PATH = Path(__file__).parent / "c2pa_envelope_schema.json"
 
 INGREDIENT_LABEL = "c2pa.ingredient.v2"
 DEBATE_HASH_LABEL = "bastion.debate_transcript_hash"
@@ -127,3 +133,20 @@ def build_envelope_manifest(
             ],
         },
     }
+
+
+@functools.lru_cache(maxsize=1)
+def _load_envelope_schema() -> dict[str, Any]:
+    with open(_ENVELOPE_SCHEMA_PATH) as f:
+        result: dict[str, Any] = json.load(f)
+        return result
+
+
+def validate_envelope_manifest(manifest: dict[str, Any]) -> None:
+    """Validate an envelope manifest against the committed JSON Schema. Raises on failure.
+
+    The envelope counterpart of :func:`inkprint.provenance.manifest.validate_manifest`,
+    so "the manifest is schema-validated on every write" holds on the dossier path
+    too — it previously held only for single and batch certificates.
+    """
+    jsonschema.validate(instance=manifest, schema=_load_envelope_schema())

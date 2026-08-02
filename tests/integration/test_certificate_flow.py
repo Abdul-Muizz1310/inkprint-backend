@@ -82,6 +82,33 @@ class TestCertificates:
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("blank", ["   ", "\t\n", " \r\n ", "\u00a0", "\u3000"])
+    async def test_tc_a_31_whitespace_only_text_rejected(self, client, blank):
+        """TC-A-31: whitespace-only text returns 422, never a signed empty certificate.
+
+        canonicalize() maps these to b"", so a 201 here would issue a certificate
+        whose content_hash is sha256(b"") — the same value for every such request.
+        """
+        resp = await client.post(
+            "/certificates",
+            json={"text": blank, "author": "a@b.c"},
+        )
+        assert resp.status_code == 422, resp.text
+
+    @pytest.mark.asyncio
+    async def test_tc_a_31b_no_certificate_ever_hashes_the_empty_string(self, client):
+        """No accepted certificate may carry the empty-string hash or content_len 0."""
+        empty_sha = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        resp = await client.post(
+            "/certificates",
+            json={"text": "  genuine content  ", "author": "a@b.c"},
+        )
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["content_hash"] != empty_sha
+        assert body["content_len"] > 0
+
+    @pytest.mark.asyncio
     async def test_tc_a_05_get_certificate(self, client):
         """TC-A-05: GET /certificates/{id} for existing cert returns 200."""
         create = await client.post(

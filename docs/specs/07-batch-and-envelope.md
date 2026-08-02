@@ -78,7 +78,9 @@ Items in the response appear in the **same order as the request**.
 
 **Atomicity**
 
-The endpoint issues `len(items)` certificates inside a single logical transaction. If any step fails — shape validation, embedding API failure, manifest schema validation — no certificates from this request are retained. In the current in-memory-store implementation, this means the service builds records into a local list first and only commits them to the store on full success. In a database-backed implementation the same logic uses `session.begin()`.
+The endpoint issues `len(items)` certificates inside a single logical transaction. If any step fails — shape validation, embedding API failure, manifest schema validation — no certificates from this request are retained. The service builds every record into a local list first and commits them all in one `session_scope()` (`certificate_repo.add_many`) only on full success, so a mid-batch failure never leaves partial state.
+
+R2 archival runs after the records are assembled and before the commit, concurrently across the batch. It is best-effort by contract: with R2 configured each record's `storage_key` is rewritten to the real R2 key; with R2 absent or failing it degrades to the logical `certificates/{id}.json` key, identical to the single-certificate path. Archival never fails the batch.
 
 **Failure modes**
 
@@ -127,7 +129,14 @@ Sign a dossier-envelope manifest over a bundle.
      - one `bastion.debate_transcript_hash` assertion with the hex hash
      - one `bastion.perf_receipt_hash` assertion with the hex hash
    - `signature.value` = the base64 Ed25519 signature produced in step 3.
-5. The service writes a row to `dossier_envelopes` and returns the response. The row uses `dossier_id` as its primary key.
+5. The service validates the assembled manifest against the committed JSON Schema
+   `provenance/c2pa_envelope_schema.json` before persisting it — the same
+   "schema-validated on every write" guarantee the certificate paths give. The envelope
+   schema is a **separate** committed file rather than a loosened `c2pa_schema.json`: the
+   envelope carries a top-level `issued_at` and `bastion.*` assertions that the certificate
+   manifest never does, and relaxing the certificate schema to admit them would weaken the
+   stricter guarantee the certificate path relies on.
+6. The service writes a row to `dossier_envelopes` and returns the response. The row uses `dossier_id` as its primary key.
 
 **Idempotency**
 
@@ -217,19 +226,31 @@ All request/response models are:
 
 ## `dossier_envelopes` table
 
-Alembic revision `0002` creates:
+Alembic revisions `0002` (base) and `0005` (persistence columns) create:
 
-| Column | Type | Constraints |
-|---|---|---|
-| `dossier_id` | UUID | PK |
-| `envelope_manifest` | JSONB | NOT NULL |
-| `envelope_signature` | TEXT | NOT NULL |
-| `evidence_cert_ids` | UUID[] | NOT NULL |
-| `debate_transcript_hash` | TEXT | NOT NULL |
-| `perf_receipt_hash` | TEXT | NOT NULL |
-| `created_at` | TIMESTAMPTZ | DEFAULT now() |
+| Column | Type | Constraints | Revision |
+|---|---|---|---|
+| `dossier_id` | UUID | PK | 0002 |
+| `envelope_manifest` | JSONB | NOT NULL | 0002 |
+| `envelope_signature` | TEXT | NOT NULL | 0002 |
+| `evidence_cert_ids` | UUID[] | NOT NULL | 0002 |
+| `debate_transcript_hash` | TEXT | NOT NULL | 0002 |
+| `perf_receipt_hash` | TEXT | NOT NULL | 0002 |
+| `envelope_metadata` | JSONB | NULL | 0005 |
+| `canonical_bundle` | BYTEA | NOT NULL | 0005 |
+| `created_at` | TIMESTAMPTZ | DEFAULT now() | 0002 |
 
-The current codebase uses an in-memory store for tests; the migration file is the source of truth for the persistent schema. The envelope service stores records in an in-memory dict keyed by `dossier_id` (mirroring the pattern used by `certificate_service` and `leak_service`) so that unit and integration tests work without a live Postgres instance.
+The envelope service persists to this table through `repositories/envelope_repo.py`,
+the same shape the certificate and leak services use — a signed envelope survives a
+container restart. Revision `0002` alone was not sufficient to retire the earlier
+in-memory dict: `envelope_metadata` participates in the idempotency fingerprint (a
+re-submission with the same metadata must be recognised as identical after a restart)
+and `canonical_bundle` stores the exact signed bytes so verification never has to
+re-derive them from a timestamp. Revision `0005` adds both.
+
+Tests run this path against in-memory SQLite (JSON/BLOB column variants) in the fast
+tier and against real Postgres — JSONB, UUID[], BYTEA, TIMESTAMPTZ — in the
+`postgres`-marked Testcontainers tier.
 
 ## Test cases
 
@@ -247,6 +268,8 @@ The current codebase uses an in-memory store for tests; the migration file is th
 | `TC-B-08` | Item with empty text → 422. |
 | `TC-B-09` | Item with text > 1_000_000 chars → 422. |
 | `TC-B-10` | Embedding API failure mid-batch → 503 AND no certificates committed (store size unchanged). |
+| `TC-B-25` | Item with whitespace-only text (`"   "`, `"\t\n"`, NBSP, ideographic space) → 422. `min_length=1` does not close this: `canonicalize()` maps them to `b""`, so the batch would sign certificates over zero canonical bytes and every one would collide on `sha256(b"")`. |
+| `TC-B-26` | Every certificate returned by the batch path carries a `storage_key` that reflects where the blob actually lives — the R2 key when R2 is configured, the logical fallback key when it is not. The single-certificate path's behaviour and the batch path's behaviour are identical. |
 
 ### `POST /dossiers/envelope`
 
@@ -276,6 +299,8 @@ The current codebase uses an in-memory store for tests; the migration file is th
 | `TC-B-22` | `canonical_bundle_bytes` is deterministic for identical inputs. |
 | `TC-B-23` | Different metadata → different canonical bytes. |
 | `TC-B-24` | `build_envelope_manifest` includes one `c2pa.ingredient.v2` assertion per evidence cert, plus the two `bastion.*_hash` assertions, and uses `claim_generator = "bastion/dossier-envelope"`. |
+| `TC-B-27` | Every manifest `build_envelope_manifest` produces validates against `c2pa_envelope_schema.json`, and a structurally broken manifest (missing `signature`, non-object assertion `data`, wrong `@context`) raises `jsonschema.ValidationError`. |
+| `TC-B-28` | `POST /dossiers/envelope` validates before persisting: when the builder emits a schema-invalid manifest the request fails and **no** envelope row is written. |
 
 ## Acceptance criteria
 

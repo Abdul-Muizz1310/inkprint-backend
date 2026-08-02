@@ -25,3 +25,14 @@ def canonicalize(text: str) -> bytes:
     nfc = unicodedata.normalize("NFC", text)
     collapsed = WHITESPACE_RE.sub(" ", nfc).strip()
     return collapsed.encode("utf-8")
+
+
+def has_canonical_content(text: str) -> bool:
+    """Return whether ``text`` survives canonicalization as non-empty bytes.
+
+    Whitespace-only input canonicalizes to ``b""`` by design (invariants 2-3), so
+    "the string is non-empty" is *not* the same question as "there are bytes to
+    sign". Callers that are about to hash or sign must ask this one instead:
+    signing ``b""`` binds nothing and collides for every blank submission.
+    """
+    return canonicalize(text) != b""

@@ -66,14 +66,16 @@ sequenceDiagram
 | **Fingerprint** | `src/inkprint/fingerprint/` | SimHash, Voyage embeddings, comparison/verdict |
 | **Leak** | `src/inkprint/leak/` | Corpus scanners (CC, HF, Stack), scoring, orchestrator |
 | **Core** | `src/inkprint/core/` | Config, async DB engine + `session_scope`, R2 client, key loading |
-| **Platform** | `src/inkprint/platform/` | Health, version, public-key, middleware |
+| **Platform** | `src/inkprint/platform/` | Health, version, public-key, request-ID/CORS middleware, per-IP rate limiting, `X-Platform-Token` JWT validation |
 | **Models** | `src/inkprint/models/` | SQLAlchemy ORM models (certificates, derivative_links, leak_scan_jobs, leak_scans, dossier_envelopes) |
 | **Evals** | `src/inkprint/evals/` | Evaluation runners (fingerprint, tamper, leak) |
 
 ## Key design decisions
 
 - **MVC layering** — routers never touch storage; they call services. Services open a committed `session_scope()` and delegate persistence to the repositories. Domain modules (canonicalize, sign, fingerprint, score) stay pure.
-- **DB-backed persistence with a zero-config local default** — certificates, batches, and leak-scan jobs/results persist through async SQLAlchemy. When `DATABASE_URL` is unset the engine falls back to a local SQLite file (`aiosqlite`), so the service runs and persists without Postgres; production points `DATABASE_URL` at Neon. The lifespan creates the schema on SQLite; Postgres uses Alembic. (The dossier-envelope record is the one store still held in memory; its ORM model exists and DB-backing it is a follow-up.)
+- **DB-backed persistence with a zero-config local default** — certificates, batches, dossier envelopes, and leak-scan jobs/results all persist through async SQLAlchemy; nothing is held in process memory. When `DATABASE_URL` is unset the engine falls back to a local SQLite file (`aiosqlite`), so the service runs and persists without Postgres; production points `DATABASE_URL` at Neon. The lifespan creates the schema on SQLite; Postgres uses Alembic, applied by `docker-entrypoint.sh` (`alembic upgrade head`) before uvicorn starts.
+- **Manifests are schema-validated on every write** — certificate manifests against `provenance/c2pa_schema.json`, dossier-envelope manifests against `provenance/c2pa_envelope_schema.json`. Two committed schemas rather than one loosened schema: the envelope carries a top-level `issued_at` and `bastion.*` assertions, and admitting those into the certificate schema would weaken the stricter guarantee the certificate path relies on.
+- **Timestamps are `TIMESTAMP WITH TIME ZONE` everywhere** — the ORM and the Alembic migrations must agree. A bare `Mapped[datetime]` infers a naive column, which SQLite tolerates and asyncpg rejects outright; `tests/unit/test_model_migration_parity.py` and the Testcontainers Postgres tier both guard it.
 - **Semantic search ranking** — embeddings are stored as a JSON array and ranked by in-Python cosine similarity, so correctness needs no pgvector; a pgvector ANN index is an optional production index, and ranking quality depends on a real Voyage embedding backend.
 - **Leak scan is a real background task** — `POST /leak-scan` returns a pending job and schedules `run_scan`, which resolves the certificate, runs the corpus orchestrator, and persists per-corpus results. Live hits require network access to Common Crawl / HuggingFace / The Stack; offline the scan still completes with zero hits.
 - **Ephemeral keys in dev** — when signing key env vars are absent, the app generates a fresh Ed25519 keypair at startup. Production keys come from env.
@@ -87,8 +89,11 @@ POST   /certificates                  201 → Certificate
 GET    /certificates/{id}             200 → Certificate
 GET    /certificates/{id}/manifest    200 → C2PA manifest
 GET    /certificates/{id}/qr          200 → image/png
-GET    /certificates/{id}/download    200 → original text
-POST   /verify                        200 → VerifyResult
+GET    /certificates/{id}/download    200 → application/zip (manifest.json + public_key.pem + content.txt)
+POST   /certificates/batch            200 → BatchCertificateResponse (1..50, atomic)
+POST   /verify                        200 → VerifyResult (signature + hash)
+POST   /verify/batch                  200 → BatchVerifyResponse (1..50, per-item)
+POST   /dossiers/envelope             200 → EnvelopeResponse (409 on bundle conflict)
 POST   /diff                          200 → DiffResult
 POST   /leak-scan                     202 → LeakScanJob
 GET    /leak-scan/{id}                200 → LeakScanResult

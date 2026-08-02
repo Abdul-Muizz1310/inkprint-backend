@@ -1,3 +1,13 @@
+# NOTE on migrations: there is deliberately no `preDeployCommand` here. Render
+# pre-deploy commands require a paid instance type and this service runs on
+# `plan: free`, so a preDeployCommand would be accepted by the Blueprint and then
+# silently never execute. `docker-entrypoint.sh` runs `alembic upgrade head`
+# inside the container on every boot instead, which works on any instance type.
+#
+# NOTE on COMMIT_SHA: not listed below because Render injects `RENDER_GIT_COMMIT`
+# into every service automatically, and `platform.health.resolve_commit_sha()`
+# falls back to it. Blueprints cannot pass Docker build args, so the image's
+# COMMIT_SHA build arg stays empty in this deployment path.
 services:
   - type: web
     name: inkprint-backend

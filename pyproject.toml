@@ -26,6 +26,9 @@ dependencies = [
     "langdetect>=1.0.9",
     "qrcode[pil]>=8.0",
     "prometheus-fastapi-instrumentator>=7.0",
+    # Driver behind core.db.DEFAULT_DATABASE_URL, the documented zero-config
+    # default. Runtime (not dev): the production image installs with --no-dev.
+    "aiosqlite>=0.20",
 ]
 
 [dependency-groups]
@@ -34,10 +37,9 @@ dev = [
     "pytest-asyncio>=0.24",
     "pytest-cov>=6.0",
     "respx>=0.21",
-    "vcrpy>=6.0",
-    "polyfactory>=2.18",
+    # Real-Postgres integration tier (tests/integration/test_postgres_tier.py).
     "testcontainers[postgres]>=4.8",
-    "aiosqlite>=0.20",
+    "pyyaml>=6.0",
     "ruff>=0.8",
     "mypy>=1.13",
     "types-boto3>=1.35",
@@ -78,7 +80,6 @@ module = [
     "langdetect.*",
     "prometheus_fastapi_instrumentator.*",
     "qrcode.*",
-    "vcr.*",
     "yaml.*",
     "jsonschema.*",
 ]
@@ -89,7 +90,14 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "slow: slow end-to-end tests (CI-only)",
-    "integration: requires Testcontainers / real Postgres",
+    # Wired end-to-end through the ASGI app (routers + services + repositories).
+    # Needs no Docker and no Postgres: tests/conftest.py binds in-memory SQLite.
+    # These run in the default CI test job — excluding them would leave the
+    # router/service layers unverified there.
+    "integration: app-level end-to-end tests through the ASGI app (in-memory SQLite)",
+    # The only tier that genuinely needs Docker: a real Postgres server via
+    # Testcontainers. Self-skips when Docker is unavailable; own CI job.
+    "postgres: requires Docker — real Postgres via Testcontainers",
 ]
 
 [tool.coverage.run]

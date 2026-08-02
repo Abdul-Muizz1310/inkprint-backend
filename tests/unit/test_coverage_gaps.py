@@ -593,11 +593,18 @@ class TestSchemaValidators:
     """Cover lines 23, 59 of schemas/certificate.py."""
 
     def test_certificate_create_empty_text_raises(self):
-        """Empty text string raises ValueError (line 23)."""
+        """Text with no canonical content raises ValueError.
+
+        Covers both the empty string and the whitespace-only case — the latter is
+        the one that used to slip through and get signed over zero bytes. See
+        tests/unit/test_empty_canonical_guard.py for the full matrix.
+        """
         from inkprint.schemas.certificate import CertificateCreate
 
-        with pytest.raises(ValueError, match="text must not be empty"):
+        with pytest.raises(ValueError, match="non-whitespace"):
             CertificateCreate(text="", author="author")
+        with pytest.raises(ValueError, match="non-whitespace"):
+            CertificateCreate(text="   ", author="author")
 
     def test_verify_request_empty_manifest_raises(self):
         """Empty manifest dict raises ValueError (line 59)."""
@@ -703,21 +710,35 @@ class TestLeakRouterEdges:
 
 
 class TestConfigIsProduction:
-    """Cover line 60 of core/config.py (is_production property)."""
+    """The ``is_production`` property — asserted against the *in-code* default.
 
-    def test_is_production_false(self):
-        """Default app_env is not production."""
+    ``Settings.model_config`` reads ``.env``, which is gitignored, so a bare
+    ``Settings()`` here would assert whatever the developer's local file happens
+    to say: putting ``APP_ENV=production`` in a local ``.env`` used to fail this
+    test with no code change. ``_env_file=None`` pins the assertion to the code.
+    """
+
+    def test_default_app_env_is_not_production(self):
         from inkprint.core.config import Settings
 
-        s = Settings()
+        with patch.dict(os.environ, {}, clear=True):
+            s = Settings(_env_file=None)
+        assert s.app_env == "development"
         assert s.is_production is False
+
+    def test_local_dotenv_cannot_change_the_in_code_default(self):
+        """Even with APP_ENV=production in the environment, _env_file=None + explicit wins."""
+        from inkprint.core.config import Settings
+
+        with patch.dict(os.environ, {"APP_ENV": "production"}):
+            assert Settings(_env_file=None, app_env="development").is_production is False
 
     def test_is_production_true(self):
         """app_env='production' returns True."""
         from inkprint.core.config import Settings
 
         with patch.dict(os.environ, {"APP_ENV": "production"}):
-            s = Settings()
+            s = Settings(_env_file=None)
         assert s.is_production is True
 
 

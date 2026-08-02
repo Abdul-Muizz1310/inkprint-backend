@@ -23,7 +23,12 @@ from inkprint.evals.leak_eval import LeakEvalResult, evaluate_leak_probe
 from inkprint.evals.tamper_eval import TamperEvalResult, evaluate_tamper_tests
 
 # Published acceptance targets (see evals/report.md and docs/specs).
-FINGERPRINT_TARGET = 0.85  # SimHash-only baseline; combined system exceeds 0.90
+# 0.85 is the SimHash-only baseline and the only fingerprint target that is
+# actually enforced here. The >= 0.90 figure quoted elsewhere for a combined
+# SimHash + embedding classifier is an unmeasured design target: no combined
+# evaluator exists (fingerprint_eval computes Hamming distance alone), so nothing
+# in this module can gate on it.
+FINGERPRINT_TARGET = 0.85
 LEAK_TP_TARGET = 18  # true positives out of 20
 LEAK_FP_LIMIT = 2  # max false positives out of 20
 

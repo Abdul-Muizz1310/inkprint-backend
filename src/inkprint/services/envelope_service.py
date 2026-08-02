@@ -1,4 +1,9 @@
-"""Dossier envelope service — pure orchestration around envelope_builder + signer."""
+"""Dossier envelope service — orchestration around envelope_builder + signer.
+
+Pure bundle/manifest construction lives in :mod:`inkprint.provenance.envelope_builder`;
+persistence is delegated to :mod:`inkprint.repositories.envelope_repo` via a committed
+:func:`session_scope`, the same shape the certificate and leak services use.
+"""
 
 from __future__ import annotations
 
@@ -9,11 +14,14 @@ from uuid import UUID
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from inkprint.core.db import session_scope
 from inkprint.provenance.envelope_builder import (
     build_envelope_manifest,
     canonical_bundle_bytes,
+    validate_envelope_manifest,
 )
 from inkprint.provenance.signer import sign
+from inkprint.repositories import envelope_repo
 from inkprint.services import certificate_service
 
 
@@ -27,17 +35,6 @@ class UnknownCertificateError(Exception):
 
 class EnvelopeConflictError(Exception):
     """Raised when a dossier_id already exists with a different bundle."""
-
-
-# In-memory envelope store, keyed by str(dossier_id). Mirrors the pattern used
-# by certificate_service and leak_service. The alembic migration defines the
-# persistent schema for future DB-backed replacement.
-_envelopes: dict[str, dict[str, Any]] = {}
-
-
-def reset_store() -> None:
-    """Clear the in-memory envelope store (tests)."""
-    _envelopes.clear()
 
 
 def _bundle_fingerprint(
@@ -56,9 +53,26 @@ def _bundle_fingerprint(
     )
 
 
-def get_envelope(dossier_id: str) -> dict[str, Any] | None:
-    """Look up an envelope by dossier_id string."""
-    return _envelopes.get(dossier_id)
+def _record_fingerprint(
+    record: dict[str, Any],
+) -> tuple[tuple[str, ...], str, str, tuple[tuple[str, str], ...]]:
+    """Rebuild the fingerprint of a stored envelope.
+
+    Derived from persisted columns only, so idempotency and conflict detection
+    survive a restart — they used to depend on a value kept in process memory.
+    """
+    return _bundle_fingerprint(
+        evidence_cert_ids=list(record["evidence_cert_ids"]),
+        debate_transcript_hash=record["debate_transcript_hash"],
+        perf_receipt_hash=record["perf_receipt_hash"],
+        metadata=record["metadata"],
+    )
+
+
+async def get_envelope(dossier_id: str) -> dict[str, Any] | None:
+    """Look up a persisted envelope by dossier_id string."""
+    async with session_scope() as session:
+        return await envelope_repo.get(session, dossier_id)
 
 
 async def create_envelope(
@@ -71,24 +85,22 @@ async def create_envelope(
     private_key: Ed25519PrivateKey,
     key_id: str,
 ) -> dict[str, Any]:
-    """Build, sign, and persist a dossier envelope.
+    """Build, sign, validate, and persist a dossier envelope.
 
     Raises UnknownCertificateError on missing evidence cert, or
     EnvelopeConflictError when a different bundle was already signed for the
     same dossier_id. Re-submitting identical inputs returns the stored record.
 
-    Note: evidence certs are validated against the DB-backed certificate
-    repository, but the envelope record itself is still held in the in-memory
-    ``_envelopes`` store. Moving it onto the ``dossier_envelopes`` table (the
-    ORM model already exists) is the remaining persistence follow-up.
+    The envelope row lands in the ``dossier_envelopes`` table, so a signed
+    envelope survives a container restart.
     """
     # 1. Validate all evidence cert ids exist.
     for cid in evidence_cert_ids:
         if await certificate_service.get_certificate(str(cid)) is None:
             raise UnknownCertificateError(cid)
 
-    # 2. Idempotency / conflict check.
-    existing = _envelopes.get(str(dossier_id))
+    # 2. Idempotency / conflict check against storage.
+    existing = await get_envelope(str(dossier_id))
     if existing is not None:
         new_fp = _bundle_fingerprint(
             evidence_cert_ids=evidence_cert_ids,
@@ -96,7 +108,7 @@ async def create_envelope(
             perf_receipt_hash=perf_receipt_hash,
             metadata=metadata,
         )
-        if existing["_fingerprint"] == new_fp:
+        if _record_fingerprint(existing) == new_fp:
             return existing
         raise EnvelopeConflictError("Dossier already envelope-signed with different bundle")
 
@@ -113,7 +125,8 @@ async def create_envelope(
     bundle_hash_hex = hashlib.sha256(canonical).hexdigest()
     signature_b64 = sign(canonical, private_key)
 
-    # 4. Build manifest.
+    # 4. Build the manifest and validate it against the committed JSON Schema
+    #    *before* persisting — the same guarantee the certificate paths give.
     manifest = build_envelope_manifest(
         dossier_id=dossier_id,
         evidence_cert_ids=evidence_cert_ids,
@@ -124,19 +137,19 @@ async def create_envelope(
         key_id=key_id,
         issued_at=issued_at,
     )
+    validate_envelope_manifest(manifest)
 
     record: dict[str, Any] = {
         "envelope_id": dossier_id,
         "envelope_manifest": manifest,
         "envelope_signature": signature_b64,
+        "evidence_cert_ids": list(evidence_cert_ids),
+        "debate_transcript_hash": debate_transcript_hash,
+        "perf_receipt_hash": perf_receipt_hash,
+        "metadata": metadata,
         "canonical_bundle": canonical,
         "created_at": issued_at,
-        "_fingerprint": _bundle_fingerprint(
-            evidence_cert_ids=evidence_cert_ids,
-            debate_transcript_hash=debate_transcript_hash,
-            perf_receipt_hash=perf_receipt_hash,
-            metadata=metadata,
-        ),
     }
-    _envelopes[str(dossier_id)] = record
+    async with session_scope() as session:
+        await envelope_repo.add(session, record)
     return record

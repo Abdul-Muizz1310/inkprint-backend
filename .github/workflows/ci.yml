@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -30,13 +31,51 @@ jobs:
       - uses: astral-sh/setup-uv@v4
       - run: uv python install 3.12
       - run: uv sync --frozen --all-extras
-      - run: uv run pytest -m "not slow and not integration" --cov=src/inkprint --cov-report=term-missing
+      # Excludes only `slow` and the Docker-dependent `postgres` tier. The
+      # `integration` tests run here on purpose: they need no Docker and no
+      # Postgres (conftest binds in-memory SQLite), and deselecting them left the
+      # router/service layers unmeasured by the coverage gate.
+      - run: uv run pytest -m "not slow and not postgres" --cov=src/inkprint --cov-report=term-missing
 
-  build:
-    needs: test
+  postgres:
+    needs: lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t ${{ github.repository }}:${{ github.sha }} .
+      - uses: astral-sh/setup-uv@v4
+      - run: uv python install 3.12
+      - run: uv sync --frozen --all-extras
+      # Real Postgres via Testcontainers (Docker is preinstalled on GitHub-hosted
+      # runners). This is the only tier that exercises JSONB / UUID[] / BYTEA /
+      # TIMESTAMPTZ and the Alembic chain the way Neon does.
+      - run: uv run pytest -m postgres -q
+
+  build:
+    needs: [test, postgres]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t ${{ github.repository }}:${{ github.sha }} --build-arg COMMIT_SHA=${{ github.sha }} .
+
+  smoke:
+    # Post-deploy check. Render auto-deploys main on push (there is no deploy
+    # job here), so this polls the live service afterwards.
+    #
+    # Env-gated on purpose: with the repository variable INKPRINT_HEALTH_URL
+    # unset the script exits 0 with a notice. The free-tier service is
+    # periodically cold or suspended, and an unconditional probe would fail CI
+    # for reasons unrelated to the change under test.
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv python install 3.12
+      - run: uv sync --frozen --all-extras
+      - name: Poll live /health
+        env:
+          INKPRINT_HEALTH_URL: ${{ vars.INKPRINT_HEALTH_URL }}
+        run: uv run python scripts/smoke_health.py
 
   # NOTE: no deploy job — the Render service auto-deploys main on push.

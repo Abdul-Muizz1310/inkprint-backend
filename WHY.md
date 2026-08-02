@@ -10,4 +10,8 @@ By April 2026, the interesting question is not "what changed in this document" b
 
 ## What I'd change if I did it again
 
-The in-memory store served testing well but delayed real persistence. If I started over, I would wire SQLAlchemy repositories from day one and use Testcontainers for every integration test, so the gap between "tests pass" and "production works" would be zero. I would also cache Common Crawl CDX results aggressively in Upstash — the 1 req/s rate limit is the real bottleneck for the leak scanner, and a 7-day content-hash cache would eliminate most repeated scans.
+I started on an in-memory store, and it cost me twice. Everything is real async-SQLAlchemy persistence now — certificates, batches, leak-scan jobs and results, and dossier envelopes all live in Postgres behind repositories — but shipping it in stages meant carrying a store that "worked" in tests while proving nothing about production, and the dossier envelope in particular stayed in a module-level dict long after the rest had moved. If I started over I would wire the repositories from day one.
+
+The sharper lesson is about the *tests*, not the store. For a long time every test ran against in-memory SQLite, which is fast and quietly forgiving: it accepted a naive `TIMESTAMP` where the migration declared `TIMESTAMP WITH TIME ZONE`, so the suite was green while `asyncpg` would have rejected every insert on Neon. A Testcontainers Postgres tier found that in its first run. Test against the engine you deploy on — a green SQLite suite is not evidence about Postgres.
+
+I would also cache Common Crawl CDX results aggressively — the 1 req/s rate limit is the real bottleneck for the leak scanner. That one is now done rather than aspirational: a 7-day content-hash cache (`leak_scan_cache`, migration `0004`) short-circuits repeated scans of the same text against the same corpus snapshot. It lives in Postgres rather than Upstash, which keeps the deployment to one datastore.

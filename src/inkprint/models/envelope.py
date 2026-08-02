@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Text, Uuid, func
+from sqlalchemy import JSON, DateTime, LargeBinary, Text, Uuid, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -33,4 +33,14 @@ class DossierEnvelope(Base):
     )
     debate_transcript_hash: Mapped[str] = mapped_column(Text(), nullable=False)
     perf_receipt_hash: Mapped[str] = mapped_column(Text(), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
+    # Part of the idempotency fingerprint (migration 0005): a re-submission with
+    # the same metadata must be recognised as identical after a restart.
+    envelope_metadata: Mapped[dict[str, str] | None] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"), nullable=True
+    )
+    # The exact bytes that were signed, kept verbatim so verification never has
+    # to re-derive them from a timestamp (migration 0005).
+    canonical_bundle: Mapped[bytes] = mapped_column(LargeBinary(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

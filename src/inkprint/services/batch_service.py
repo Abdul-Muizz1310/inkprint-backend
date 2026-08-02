@@ -118,6 +118,8 @@ async def create_batch(
             "issued_at": issued_at,
             "signature": signature_b64,
             "manifest": manifest,
+            # Provisional: replaced below by the real R2 key when archival
+            # succeeds. Never leave a key here that no object backs.
             "storage_key": f"certificates/{cert_id}.json",
             "metadata": metadata,
         }
@@ -134,12 +136,36 @@ async def create_batch(
             }
         )
 
+    # Archive every blob before committing, so the persisted ``storage_key``
+    # names a real object whenever R2 is configured. Best-effort by contract
+    # (see :func:`r2.archive_text`): an unconfigured or failing R2 degrades each
+    # key back to the logical one — exactly what the single-certificate path
+    # does — and never fails the batch.
+    await _archive_batch(pending_records)
+
     # Commit: all-or-nothing. Any embedding/manifest failure above raised
     # before this point, so nothing is persisted on a mid-batch failure.
     async with session_scope() as session:
         await certificate_repo.add_many(session, pending_records)
 
     return response_items
+
+
+async def _archive_batch(records: list[dict[str, Any]]) -> None:
+    """Archive each record's text to R2 concurrently, rewriting ``storage_key``.
+
+    Mutates ``records`` in place. Concurrency keeps a 50-item batch's archival
+    latency flat rather than serial (the same motivation as the single batched
+    embedding call).
+    """
+    import asyncio
+
+    from inkprint.core import r2
+
+    keys = await asyncio.gather(*(r2.archive_text(r["storage_key"], r["text"]) for r in records))
+    for record, archived_key in zip(records, keys, strict=True):
+        if archived_key:
+            record["storage_key"] = archived_key
 
 
 async def verify_batch(

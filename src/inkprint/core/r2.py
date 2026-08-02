@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from typing import Any
 
 import boto3
 
 from inkprint.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 def _get_client() -> Any:
@@ -41,6 +45,24 @@ def upload_text(key: str, text: str) -> str | None:
         ContentType="text/plain; charset=utf-8",
     )
     return full_key
+
+
+async def archive_text(key: str, text: str) -> str | None:
+    """Best-effort archival of ``text`` under ``key``.
+
+    Returns the R2 storage key on success, or ``None`` when R2 is unconfigured
+    (the common demo case) or the upload fails — archival is never fatal to
+    certificate creation. The synchronous boto3 call is offloaded to a thread so
+    it never blocks the event loop.
+
+    Single home for this behaviour on purpose: the single-certificate and batch
+    paths must agree on what ``storage_key`` means, and they previously did not.
+    """
+    try:
+        return await asyncio.to_thread(upload_text, key, text)
+    except Exception:
+        logger.debug("R2 archival skipped/failed for %s", key, exc_info=True)
+        return None
 
 
 def download_text(key: str) -> str:

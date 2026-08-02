@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+from inkprint.schemas.validators import reject_blank_canonical
+
 
 class CertificateCreate(BaseModel):
     """Request body for POST /certificates."""
@@ -19,9 +21,8 @@ class CertificateCreate(BaseModel):
     @field_validator("text")
     @classmethod
     def text_not_empty(cls, v: str) -> str:
-        if not v:
-            raise ValueError("text must not be empty")
-        return v
+        """Reject text that canonicalizes to zero bytes (spec 05-api TC-A-31)."""
+        return reject_blank_canonical(v)
 
     @field_validator("author")
     @classmethod

@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from inkprint.schemas.validators import reject_blank_canonical
 
 
 class BatchCertificateItem(BaseModel):
@@ -16,6 +18,16 @@ class BatchCertificateItem(BaseModel):
     text: str = Field(min_length=1, max_length=1_000_000)
     author: str = Field(min_length=1)
     metadata: dict[str, str] | None = None
+
+    @field_validator("text")
+    @classmethod
+    def text_has_canonical_content(cls, v: str) -> str:
+        """Reject text that canonicalizes to zero bytes (spec 07 TC-B-25).
+
+        ``min_length=1`` is not sufficient: whitespace-only text is a non-empty
+        string whose canonical form is ``b""``.
+        """
+        return reject_blank_canonical(v)
 
 
 class BatchCertificateCreateRequest(BaseModel):

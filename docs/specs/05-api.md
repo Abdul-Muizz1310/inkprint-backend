@@ -7,6 +7,8 @@ Define the exact HTTP routes, request/response schemas, status codes, and middle
 ## Modules
 
 - `src/inkprint/api/routers/certificates.py`
+- `src/inkprint/api/routers/batch.py`
+- `src/inkprint/api/routers/dossiers.py`
 - `src/inkprint/api/routers/verify.py`
 - `src/inkprint/api/routers/diff.py`
 - `src/inkprint/api/routers/leak.py`
@@ -22,8 +24,11 @@ POST   /certificates                  201 → Certificate
 GET    /certificates/{id}             200 → Certificate
 GET    /certificates/{id}/manifest    200 → C2PA manifest JSON
 GET    /certificates/{id}/qr          200 → image/png
-GET    /certificates/{id}/download    200 → original text (from R2)
+GET    /certificates/{id}/download    200 → application/zip
+POST   /certificates/batch            200 → BatchCertificateResponse   (spec 07)
 POST   /verify                        200 → VerifyResult
+POST   /verify/batch                  200 → BatchVerifyResponse        (spec 07)
+POST   /dossiers/envelope             200 → EnvelopeResponse           (spec 07)
 POST   /diff                          200 → DiffResult
 POST   /leak-scan                     202 → LeakScanJob (async)
 GET    /leak-scan/{id}                200 → LeakScanResult (poll)
@@ -52,10 +57,28 @@ Response 201: {
 Body: { manifest: dict, text?: str }
 Response 200: {
   valid: bool,
-  checks: { signature: bool, hash: bool, timestamp: bool },
+  checks: { signature: bool, hash: bool },
   warnings: [str]
 }
 ```
+
+`checks` carries exactly two keys — **`signature`** (Ed25519 verification of the
+manifest's `signature.value` over `canonicalize(text)`) and **`hash`**
+(`sha256(canonicalize(text))` against the `c2pa.hash.data` assertion). `valid` is
+their conjunction.
+
+There is deliberately **no `timestamp` check** (an earlier revision of this spec
+documented one that was never implemented), and deliberately **no `simhash` or
+`embedding` check**: the C2PA manifest carries no simhash or embedding fields, so
+adding them would mean editing the committed `c2pa_schema.json` and weakening the
+"C2PA v2.2-aligned, schema-validated" guarantee. Fingerprint comparison is
+available where it *does* have inputs to compare — `POST /diff` and the per-item
+`simhash`/`embedding` verdicts of `POST /verify/batch` when `text` is supplied.
+
+When `text` is omitted, cryptographic verification is impossible; the endpoint
+returns `signature: false, hash: false` with the warning
+`"Text not provided; cannot verify signature or hash"` rather than a permissive
+`valid: true`.
 
 ### `POST /diff`
 ```
@@ -78,6 +101,13 @@ Query: text (required), mode ("semantic"|"exact", default "semantic")
 Response 200: { results: [Certificate], total: int }
 ```
 
+### Batch and dossier routes
+
+`POST /certificates/batch`, `POST /verify/batch`, and `POST /dossiers/envelope` are
+specified in full in [`07-batch-and-envelope.md`](07-batch-and-envelope.md); they are
+listed in the route table above so this document stays a complete inventory of the
+HTTP surface.
+
 ## Middleware (platform module)
 
 - `X-Request-Id`: generate UUID if absent, echo in response, inject into structlog context.
@@ -96,7 +126,9 @@ Response 200: { results: [Certificate], total: int }
 - [ ] `TC-A-06`: `GET /certificates/{id}` for non-existent ID returns 404.
 - [ ] `TC-A-07`: `GET /certificates/{id}/manifest` returns valid C2PA JSON.
 - [ ] `TC-A-08`: `GET /certificates/{id}/qr` returns `image/png` with content.
-- [ ] `TC-A-09`: `GET /certificates/{id}/download` returns original text.
+- [ ] `TC-A-09`: `GET /certificates/{id}/download` returns an `application/zip` archive containing
+      `manifest.json`, `public_key.pem`, and `content.txt` (the stored text — read from the
+      certificate record, not from R2), with a `Content-Disposition` attachment filename.
 
 ### Verify
 - [ ] `TC-A-10`: `POST /verify` with valid manifest + matching text returns `{valid: true}`.
@@ -130,6 +162,11 @@ Response 200: { results: [Certificate], total: int }
 ### Security
 - [ ] `TC-A-29`: Non-UUID path parameter returns 422, not 500.
 - [ ] `TC-A-30`: Request body > 1 MB is rejected (FastAPI default + explicit limit).
+- [x] `TC-A-31`: `POST /certificates` with whitespace-only `text` (`"   "`, `"\t\n"`, NBSP) returns
+      422. `canonicalize()` maps those to `b""` (spec 00, TC-C-07), so accepting them would issue a
+      signed certificate over zero canonical bytes — every such certificate colliding on
+      `sha256(b"") = e3b0c442...`. The `text` validator rejects any input whose **canonical** form is
+      empty, not merely `""`.
 
 ## Acceptance criteria
 

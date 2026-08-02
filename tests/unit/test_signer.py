@@ -83,11 +83,19 @@ class TestSignerHappy:
 
 
 class TestSignerEdge:
-    def test_tc_s_05_sign_empty_bytes(self, keypair):
-        """TC-S-05: Sign empty bytes succeeds and verifies."""
+    def test_tc_s_05_sign_empty_bytes_refused(self, keypair):
+        """TC-S-05: Sign empty bytes raises — spec 01-signing invariant 6.
+
+        Earlier revisions asserted that signing ``b""`` "succeeds and verifies".
+        It does, cryptographically — which is exactly the hole: it let a
+        whitespace-only submission be certified over zero canonical bytes, with
+        every such certificate sharing the hash of the empty string. The signer
+        now refuses, and the verifier refuses empty data too.
+        """
         priv, pub = keypair
-        sig = sign(b"", priv)
-        assert verify(b"", sig, pub) is True
+        with pytest.raises(ValueError, match="empty"):
+            sign(b"", priv)
+        assert verify(b"", sign(b"x", priv), pub) is False
 
     def test_tc_s_06_sign_large_input(self, keypair):
         """TC-S-06: Sign very large input (500 KB) succeeds and verifies."""

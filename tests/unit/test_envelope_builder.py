@@ -158,3 +158,82 @@ class TestBuildEnvelopeManifest:
                 key_id="k",
                 issued_at=_fixed_time(),
             )
+
+
+class TestEnvelopeManifestSchemaValidation:
+    """TC-B-27 — the envelope manifest is schema-validated like the cert manifest."""
+
+    def test_tc_b_27_built_manifest_validates(self) -> None:
+        from inkprint.provenance.envelope_builder import validate_envelope_manifest
+
+        manifest = build_envelope_manifest(
+            dossier_id=uuid4(),
+            evidence_cert_ids=[uuid4(), uuid4()],
+            debate_transcript_hash="a" * 64,
+            perf_receipt_hash="b" * 64,
+            bundle_hash_hex="c" * 64,
+            signature_b64="c2ln",
+            key_id="k",
+            issued_at=_fixed_time(),
+        )
+        validate_envelope_manifest(manifest)  # must not raise
+
+    @pytest.mark.parametrize(
+        "mutate",
+        [
+            pytest.param(lambda m: m.pop("signature"), id="missing-signature"),
+            pytest.param(lambda m: m.pop("assertions"), id="missing-assertions"),
+            pytest.param(lambda m: m.update({"@context": "http://evil"}), id="wrong-context"),
+            pytest.param(lambda m: m.update({"version": "1.0"}), id="wrong-version"),
+            pytest.param(lambda m: m.update({"assertions": []}), id="no-assertions"),
+            pytest.param(
+                lambda m: m.update({"assertions": [{"label": "x", "data": "not-an-object"}]}),
+                id="assertion-data-not-object",
+            ),
+            pytest.param(lambda m: m.update({"instance_id": "not-a-urn"}), id="bad-instance-id"),
+            pytest.param(lambda m: m.update({"unexpected": 1}), id="additional-property"),
+        ],
+    )
+    def test_tc_b_27_broken_manifest_rejected(self, mutate) -> None:
+        import jsonschema
+
+        from inkprint.provenance.envelope_builder import validate_envelope_manifest
+
+        manifest = build_envelope_manifest(
+            dossier_id=uuid4(),
+            evidence_cert_ids=[uuid4()],
+            debate_transcript_hash="a" * 64,
+            perf_receipt_hash="b" * 64,
+            bundle_hash_hex="c" * 64,
+            signature_b64="c2ln",
+            key_id="k",
+            issued_at=_fixed_time(),
+        )
+        mutate(manifest)
+        with pytest.raises(jsonschema.ValidationError):
+            validate_envelope_manifest(manifest)
+
+    def test_envelope_manifest_is_not_valid_against_the_certificate_schema(self) -> None:
+        """The two schemas are deliberately distinct — do not merge them.
+
+        The envelope carries a top-level ``issued_at`` that the certificate
+        schema forbids (``additionalProperties: false``). Loosening the
+        certificate schema to admit envelopes would weaken the guarantee the
+        certificate path depends on.
+        """
+        import jsonschema
+
+        from inkprint.provenance.manifest import validate_manifest
+
+        manifest = build_envelope_manifest(
+            dossier_id=uuid4(),
+            evidence_cert_ids=[uuid4()],
+            debate_transcript_hash="a" * 64,
+            perf_receipt_hash="b" * 64,
+            bundle_hash_hex="c" * 64,
+            signature_b64="c2ln",
+            key_id="k",
+            issued_at=_fixed_time(),
+        )
+        with pytest.raises(jsonschema.ValidationError):
+            validate_manifest(manifest)

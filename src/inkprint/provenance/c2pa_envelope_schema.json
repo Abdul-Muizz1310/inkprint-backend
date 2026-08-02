@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C2PA v2.2 Dossier Envelope Manifest (inkprint subset)",
+  "description": "JSON Schema for the dossier-envelope manifest inkprint produces for POST /dossiers/envelope. Deliberately a separate file from c2pa_schema.json: the envelope carries a top-level issued_at and bastion.* assertions that a certificate manifest never does, so admitting it into the certificate schema would mean loosening additionalProperties there.",
+  "type": "object",
+  "required": ["@context", "version", "instance_id", "format", "claim_generator", "issued_at", "assertions", "signature"],
+  "properties": {
+    "@context": {
+      "type": "string",
+      "const": "https://c2pa.org/statements/v1"
+    },
+    "version": {
+      "type": "string",
+      "const": "2.2"
+    },
+    "title": {
+      "type": "string"
+    },
+    "instance_id": {
+      "type": "string",
+      "pattern": "^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "format": {
+      "type": "string"
+    },
+    "claim_generator": {
+      "type": "string"
+    },
+    "claim_generator_info": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "version"],
+        "properties": {
+          "name": { "type": "string" },
+          "version": { "type": "string" }
+        }
+      }
+    },
+    "issued_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "assertions": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["label", "data"],
+        "properties": {
+          "label": { "type": "string" },
+          "data": { "type": "object" }
+        }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "required": ["alg", "key_id", "value"],
+      "properties": {
+        "alg": { "type": "string", "const": "Ed25519" },
+        "key_id": { "type": "string" },
+        "value": { "type": "string", "minLength": 1 },
+        "signed_assertions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

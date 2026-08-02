@@ -26,22 +26,14 @@ logger = logging.getLogger(__name__)
 
 
 async def _archive_to_r2(key: str, text: str) -> str | None:
-    """Best-effort upload of the certificate text to Cloudflare R2.
+    """Archive the certificate text to R2 — thin alias over :func:`r2.archive_text`.
 
-    Returns the R2 storage key when the upload succeeds, or None when R2 is
-    unconfigured (the common demo case) or the upload fails — archival is never
-    fatal to certificate creation. The synchronous boto3 call is offloaded to a
-    thread so it never blocks the event loop.
+    Kept as a module-level name because the batch path and the tests both patch
+    the R2 boundary; the behaviour itself lives in the imperative shell.
     """
-    try:
-        import asyncio
+    from inkprint.core import r2
 
-        from inkprint.core import r2
-
-        return await asyncio.to_thread(r2.upload_text, key, text)
-    except Exception:
-        logger.debug("R2 archival skipped/failed for %s", key, exc_info=True)
-        return None
+    return await r2.archive_text(key, text)
 
 
 async def _compute_embedding_or_zero(text: str) -> list[float]:
@@ -104,8 +96,9 @@ async def create_certificate(
     )
     validate_manifest(manifest)
 
-    # Archive the source text to R2 when configured; fall back to the logical
-    # key otherwise so ``storage_key`` always reflects where the blob lives.
+    # Archive the source text to R2 when configured. ``storage_key`` is the R2
+    # key on success; with R2 unconfigured it degrades to the logical key, which
+    # names where the blob *would* live rather than a live object.
     default_key = f"certificates/{cert_id}.json"
     storage_key = await _archive_to_r2(default_key, text) or default_key
 

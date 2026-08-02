@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import JSON as SAJSON
-from sqlalchemy import ForeignKey, Integer, Numeric, Text, Uuid, func
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from inkprint.models.base import Base
@@ -33,8 +33,10 @@ class LeakScanJob(Base):
     confidence: Mapped[float | None] = mapped_column(Numeric(3, 2), nullable=True)
     # Per-corpus result summaries, surfaced verbatim to pollers.
     results: Mapped[list[dict[str, Any]]] = mapped_column(SAJSON(), nullable=False, default=list)
-    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
-    completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class LeakScanCache(Base):
@@ -54,7 +56,9 @@ class LeakScanCache(Base):
     snapshot: Mapped[str] = mapped_column(Text(), nullable=False)
     # The verbatim corpus-result dict (corpus, hits, hit_count, snapshot, ...).
     result: Mapped[dict[str, Any]] = mapped_column(SAJSON(), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 class LeakScanResult(Base):
@@ -74,4 +78,6 @@ class LeakScanResult(Base):
     hit_count: Mapped[int] = mapped_column(Integer(), nullable=False)
     confidence: Mapped[float] = mapped_column(Numeric(3, 2), nullable=False)
     hits: Mapped[list[dict[str, Any]]] = mapped_column(SAJSON(), nullable=False)
-    scanned_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
+    scanned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
