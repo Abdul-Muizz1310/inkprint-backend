@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
       - run: uv python install 3.12
       - run: uv sync --frozen --all-extras
       - run: uv run ruff check .
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
       - run: uv python install 3.12
       - run: uv sync --frozen --all-extras
       # Excludes only `slow` and the Docker-dependent `postgres` tier. The
@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
       - run: uv python install 3.12
       - run: uv sync --frozen --all-extras
       # Real Postgres via Testcontainers (Docker is preinstalled on GitHub-hosted
@@ -76,7 +76,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
       - run: uv python install 3.12
       - run: uv sync --frozen --all-extras
       - name: Poll live /health (skipped when SMOKE_BASE_URL is unset)
