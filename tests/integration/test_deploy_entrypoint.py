@@ -24,6 +24,7 @@ pytestmark = pytest.mark.integration
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENTRYPOINT = REPO_ROOT / "docker-entrypoint.sh"
 
+
 def _find_posix_shell() -> str | None:
     """Return a shell that can actually run a POSIX script, or ``None``.
 
