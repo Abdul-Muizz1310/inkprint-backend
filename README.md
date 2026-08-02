@@ -379,10 +379,14 @@ Render free tier via [`render.yaml`](render.yaml). One-time setup:
 
 1. Render dashboard → **New → Blueprint** → connect this repo
 2. Fill every `sync: false` env var in service settings
-3. *(optional)* Set the repository variable `INKPRINT_HEALTH_URL` to the deployed
-   `/health` URL so CI's post-deploy smoke job polls it. Left unset, that job
-   prints a notice and passes — the free instance is often cold, and an
-   unconditional probe would fail unrelated pull requests.
+3. *(optional)* Set the repository **variable** `SMOKE_BASE_URL` to the deployed
+   service's bare origin — e.g. `https://inkprint-backend.onrender.com`, no
+   trailing slash and no `/health`; `scripts/smoke_health.py` appends the path
+   itself — so CI's post-deploy smoke job polls it. A variable, not a secret:
+   the value is a public URL, and secrets are unavailable to fork PRs. Left
+   unset, that job prints a notice and passes without making a single request —
+   the free instance is often cold, and an unconditional probe would fail
+   unrelated pull requests.
 
 Then: push to `main` → CI runs lint / test / real-Postgres tier / docker build →
 Render auto-deploys `main` on push (there is **no** CI deploy hook; the deploy job

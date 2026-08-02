@@ -61,21 +61,27 @@ jobs:
     # Post-deploy check. Render auto-deploys main on push (there is no deploy
     # job here), so this polls the live service afterwards.
     #
-    # Env-gated on purpose: with the repository variable INKPRINT_HEALTH_URL
-    # unset the script exits 0 with a notice. The free-tier service is
-    # periodically cold or suspended, and an unconditional probe would fail CI
-    # for reasons unrelated to the change under test.
+    # Env-gated on purpose: with the repository variable SMOKE_BASE_URL unset
+    # the script exits 0 with a notice and makes zero HTTP requests. The
+    # free-tier service is periodically cold or suspended, and an unconditional
+    # probe would fail CI for reasons unrelated to the change under test.
+    #
+    # SMOKE_BASE_URL is a *variable*, not a secret (the value is a public URL,
+    # and secrets are unavailable to fork PRs), and holds a bare origin — the
+    # script appends /health itself. It is deliberately scoped to this job: the
+    # test job must leave it unset so the smoke unit test keeps self-skipping
+    # there, which is the behaviour the README's test counts were measured with.
     needs: build
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
       - run: uv python install 3.12
       - run: uv sync --frozen --all-extras
-      - name: Poll live /health
+      - name: Poll live /health (skipped when SMOKE_BASE_URL is unset)
         env:
-          INKPRINT_HEALTH_URL: ${{ vars.INKPRINT_HEALTH_URL }}
+          SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
         run: uv run python scripts/smoke_health.py
 
   # NOTE: no deploy job — the Render service auto-deploys main on push.

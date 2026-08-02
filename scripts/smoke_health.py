@@ -3,9 +3,14 @@
 
 Deliberately *skippable*. The Render deployment is on the free tier and is
 periodically cold or suspended, so an unconditional live probe in CI would turn
-unrelated pull requests red. When ``INKPRINT_HEALTH_URL`` is unset or blank the
-check prints a notice and exits 0; it only fails when a URL was supplied and the
-service did not report healthy within the retry budget.
+unrelated pull requests red. When ``SMOKE_BASE_URL`` is unset or blank the
+check prints a notice, makes *zero* HTTP requests, and exits 0; it only fails
+when a base URL was supplied and the service did not report healthy within the
+retry budget.
+
+``SMOKE_BASE_URL`` is a bare origin with no path and no trailing slash — this
+script appends ``/health`` itself via :func:`health_url`, so the variable stays
+reusable for any other path a future probe wants.
 
 "Healthy" means more than HTTP 200: the body must be JSON with ``status == "ok"``
 *and* ``db == "ok"``. A deploy that boots without its database is not a good
@@ -13,7 +18,7 @@ deploy, and that exact state (``db: down``) is what this repo shipped before.
 
 Usage::
 
-    INKPRINT_HEALTH_URL=https://inkprint-backend.onrender.com/health \\
+    SMOKE_BASE_URL=https://inkprint-backend.onrender.com \\
         uv run python scripts/smoke_health.py
 """
 
@@ -26,10 +31,21 @@ from typing import Any
 
 import httpx
 
-ENV_VAR = "INKPRINT_HEALTH_URL"
+SMOKE_URL_ENV = "SMOKE_BASE_URL"
+HEALTH_PATH = "/health"
 DEFAULT_ATTEMPTS = 10
 DEFAULT_DELAY_SECONDS = 15.0
 REQUEST_TIMEOUT_SECONDS = 20.0
+
+
+def health_url(base_url: str) -> str:
+    """Join ``base_url`` with ``/health`` using exactly one separator.
+
+    The repository variable holds a bare origin, but a hand-set value may still
+    arrive with a trailing slash; collapsing it here keeps the probed URL free
+    of the ``//health`` that a naive concatenation would produce.
+    """
+    return f"{base_url.strip().rstrip('/')}{HEALTH_PATH}"
 
 
 def _describe(response: httpx.Response) -> str:
@@ -55,23 +71,24 @@ def _is_healthy(response: httpx.Response) -> tuple[bool, str]:
 
 
 def main(
-    url: str | None = None,
+    base_url: str | None = None,
     *,
     transport: httpx.BaseTransport | None = None,
     attempts: int = DEFAULT_ATTEMPTS,
     delay: float = DEFAULT_DELAY_SECONDS,
 ) -> int:
-    """Poll ``url`` until healthy. Returns a process exit code."""
-    if url is None:
-        url = os.environ.get(ENV_VAR)
-    if url is None or not url.strip():
+    """Poll ``base_url`` + ``/health`` until healthy. Returns an exit code."""
+    if base_url is None:
+        base_url = os.environ.get(SMOKE_URL_ENV)
+    if base_url is None or not base_url.strip():
         print(
-            f"[smoke] {ENV_VAR} is not set - skipping the live /health poll. "
-            "Set it as a repository variable to enable the post-deploy check."
+            f"[smoke] {SMOKE_URL_ENV} is not set - skipping the live /health poll. "
+            "Set it as a repository variable (a bare origin, no /health) to "
+            "enable the post-deploy check."
         )
         return 0
 
-    url = url.strip()
+    url = health_url(base_url)
     last_reason = "no attempt made"
     with httpx.Client(transport=transport, timeout=REQUEST_TIMEOUT_SECONDS) as client:
         for attempt in range(1, attempts + 1):

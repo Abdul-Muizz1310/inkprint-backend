@@ -70,13 +70,37 @@ class TestCiWorkflow:
         assert "-m postgres" in run_steps
 
     def test_smoke_job_is_env_gated_not_hardcoded(self) -> None:
-        """The live probe must read a repository variable, never a baked URL."""
-        steps = _load(CI)["jobs"]["smoke"]["steps"]
-        env_values = [v for step in steps for v in (step.get("env") or {}).values()]
-        assert any("vars.INKPRINT_HEALTH_URL" in str(v) for v in env_values)
+        """The live probe must read a repository variable, never a baked URL.
+
+        The variable is named ``SMOKE_BASE_URL`` portfolio-wide and holds a bare
+        origin: ``scripts/smoke_health.py`` appends ``/health`` itself, so a
+        value carrying the path would probe ``/health/health``. It must also stay
+        confined to the ``smoke`` job and to ``push`` — leaking it into ``test``
+        would un-skip the smoke unit test, and that skip is baked into the
+        README's measured counts.
+        """
+        jobs = _load(CI)["jobs"]
+        steps = jobs["smoke"]["steps"]
+        env = {k: str(v) for step in steps for k, v in (step.get("env") or {}).items()}
+        assert env.get("SMOKE_BASE_URL") == "${{ vars.SMOKE_BASE_URL }}", (
+            f"the smoke step must wire SMOKE_BASE_URL from the repository variable; got {env}"
+        )
+        assert "/health" not in env["SMOKE_BASE_URL"]
+        assert "secrets." not in env["SMOKE_BASE_URL"], "a public URL is a variable, not a secret"
         run_steps = " ".join(step.get("run", "") for step in steps if isinstance(step, dict))
         assert "scripts/smoke_health.py" in run_steps
         assert "onrender.com" not in run_steps
+
+        assert jobs["smoke"]["if"] == "github.event_name == 'push'"
+        for name, job in jobs.items():
+            if name == "smoke":
+                continue
+            declared = [
+                key
+                for scope in (job, *(s for s in job["steps"] if isinstance(s, dict)))
+                for key in (scope.get("env") or {})
+            ]
+            assert "SMOKE_BASE_URL" not in declared, f"job {name!r} must not set SMOKE_BASE_URL"
 
     def test_build_passes_the_commit_sha_build_arg(self) -> None:
         run_steps = " ".join(
