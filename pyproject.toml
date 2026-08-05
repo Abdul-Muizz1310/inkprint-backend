@@ -25,7 +25,13 @@ dependencies = [
     "jsonschema>=4.23",
     "langdetect>=1.0.9",
     "qrcode[pil]>=8.0",
-    "prometheus-fastapi-instrumentator>=7.0",
+    # >=8.1 is a hard floor, not a preference: FastAPI 0.141 routes through a
+    # `_IncludedRouter`, and 7.x reads `.path` straight off the route object, so
+    # every instrumented request raises
+    #   AttributeError: '_IncludedRouter' object has no attribute 'path'
+    # from prometheus_fastapi_instrumentator/routing.py. The old `>=7.0` floor
+    # let the resolver pick a version that cannot serve a request.
+    "prometheus-fastapi-instrumentator>=8.1",
     # Driver behind core.db.DEFAULT_DATABASE_URL, the documented zero-config
     # default. Runtime (not dev): the production image installs with --no-dev.
     "aiosqlite>=0.20",
