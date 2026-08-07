@@ -48,7 +48,7 @@ dev = [
     "pyyaml>=6.0",
     "ruff>=0.16.1",
     "mypy>=2.3.0",
-    "types-boto3>=1.43.62",
+    "types-boto3>=1.43.63",
 ]
 
 [build-system]
