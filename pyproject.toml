@@ -24,7 +24,7 @@ dependencies = [
     "pyjwt[crypto]>=2.13.0",
     "jsonschema>=4.23",
     "langdetect>=1.0.9",
-    "qrcode[pil]>=8.0",
+    "qrcode[pil]>=8.2",
     # >=8.1 is a hard floor, not a preference: FastAPI 0.141 routes through a
     # `_IncludedRouter`, and 7.x reads `.path` straight off the route object, so
     # every instrumented request raises
