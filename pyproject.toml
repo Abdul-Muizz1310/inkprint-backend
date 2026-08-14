@@ -46,9 +46,9 @@ dev = [
     # Real-Postgres integration tier (tests/integration/test_postgres_tier.py).
     "testcontainers[postgres]>=4.15.0",
     "pyyaml>=6.0",
-    "ruff>=0.16.1",
+    "ruff>=0.16.2",
     "mypy>=2.3.0",
-    "types-boto3>=1.43.62",
+    "types-boto3>=1.43.68",
 ]
 
 [build-system]
