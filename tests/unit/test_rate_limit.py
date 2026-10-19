@@ -68,3 +68,13 @@ def test_forwarded_visitors_get_their_own_bucket() -> None:
     assert client.post("/certificates", headers=alice).status_code == 200
     assert client.post("/certificates", headers=bob).status_code == 200
     assert client.post("/certificates", headers=alice).status_code == 429
+
+
+def test_pt14_identity_is_iss_and_sub_when_authenticated() -> None:
+    from inkprint.platform.rate_limit import rate_limit_identity
+    from inkprint.platform.token_verifier import Principal
+
+    principal = Principal(iss="bastion", sub="v_abcdef1234", role="editor")
+    assert rate_limit_identity(principal, "203.0.113.7") == "bastion:v_abcdef1234"
+    assert rate_limit_identity(None, "203.0.113.7") == "203.0.113.7"
+    assert rate_limit_identity(None, None) == "unknown"

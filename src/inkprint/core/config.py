@@ -54,19 +54,32 @@ class Settings(BaseSettings):
     frontend_base_url: str = "https://inkprint-frontend.vercel.app"
 
     # ─── Rate limiting ──────────────────────────────
-    # Per-IP fixed-window throttle on the write/scan endpoints. On by default so
-    # a demo-mode (auth-bypassed) deployment can't be driven to burn unbounded
+    # Fixed-window throttle on the write/scan endpoints, keyed on ``iss:sub``
+    # for an authenticated caller and on the client address otherwise
+    # (spec 09 §5). On by default so no caller can be driven to burn unbounded
     # paid Voyage-embedding / corpus-scan calls.
     rate_limit_enabled: bool = True
     rate_limit_per_minute: int = 60
 
-    # ─── Platform ───────────────────────────────────
+    # ─── Platform token (contract v2, spec 09) ──────
+    # bastion's Ed25519 key, base64 SPKI DER; wins over the URL when set.
+    bastion_signing_key_public: str = ""
+    # Fetched (JSON field ``publicKey``) when the key above is empty.
     bastion_public_key_url: str = "https://bastion-six.vercel.app/api/public-key"
-    demo_mode: bool = True
+    # inkprint-frontend's Ed25519 key, base64 SPKI DER (DR-0030 proxy).
+    inkprint_frontend_signing_key_public: str = ""
+    # Tolerates a *missing* token only (logged); a present token is always
+    # fully verified. A transition switch, off unless the deployment says so.
+    demo_mode: bool = False
 
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    @property
+    def is_test(self) -> bool:
+        """The test settings: the only ones under which a keyless deployment fails open."""
+        return self.app_env == "test"
 
 
 @lru_cache(maxsize=1)

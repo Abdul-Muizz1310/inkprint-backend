@@ -21,6 +21,16 @@ os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 os.environ["R2_ENDPOINT"] = ""
 os.environ["R2_ACCESS_KEY_ID"] = ""
 os.environ["R2_SECRET_ACCESS_KEY"] = ""
+# The test settings (spec 09 §3): with no trusted key configured, protected
+# routes proceed instead of failing closed, so app-level tests need no token.
+# Blank every key source so neither a developer's .env nor the in-code default
+# bastion URL makes the app fetch a real key; the contract-v2 tests build their
+# own app with explicit keys (tests/unit/test_platform_token.py).
+os.environ["APP_ENV"] = "test"
+os.environ["DEMO_MODE"] = "false"
+os.environ["BASTION_SIGNING_KEY_PUBLIC"] = ""
+os.environ["BASTION_PUBLIC_KEY_URL"] = ""
+os.environ["INKPRINT_FRONTEND_SIGNING_KEY_PUBLIC"] = ""
 
 from collections.abc import AsyncIterator
 

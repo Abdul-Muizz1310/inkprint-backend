@@ -26,7 +26,7 @@ from inkprint.api.routers.dossiers import router as dossiers_router
 from inkprint.api.routers.leak import router as leak_router
 from inkprint.api.routers.search import router as search_router
 from inkprint.api.routers.verify import router as verify_router
-from inkprint.core.config import Settings, get_settings
+from inkprint.core.config import Settings
 from inkprint.platform.health import router as health_router
 from inkprint.platform.middleware import add_middleware
 from inkprint.platform.platform_token import install_platform_token
@@ -94,9 +94,9 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-def create_app() -> FastAPI:
-    """Build and return the FastAPI application."""
-    settings = Settings()
+def create_app(settings: Settings | None = None) -> FastAPI:
+    """Build and return the FastAPI application (``settings`` defaults to the environment)."""
+    settings = settings or Settings()
 
     application = FastAPI(
         title="inkprint",
@@ -112,14 +112,16 @@ def create_app() -> FastAPI:
     application.state.key_id = key_id
     application.state.settings = settings
 
-    # Middleware (must be added before routers for CORS to work on all routes)
-    add_middleware(application)
+    # Middleware. The last added runs outermost, so the order below gives
+    # CORS -> request id -> platform token -> rate limit -> routes (spec 09 §6):
+    # the limiter sees the authenticated caller, and CORS decorates rejections.
     install_rate_limit(
         application,
         per_minute=settings.rate_limit_per_minute,
         enabled=settings.rate_limit_enabled,
     )
-    install_platform_token(application, demo_mode=get_settings().demo_mode)
+    install_platform_token(application, settings=settings)
+    add_middleware(application, app_env=settings.app_env)
 
     # Prometheus metrics — exposes GET /metrics
     Instrumentator().instrument(application).expose(application, include_in_schema=False)
