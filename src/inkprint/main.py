@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import os
 from collections.abc import AsyncIterator
@@ -65,11 +66,17 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     pgvector migration), so auto-create is restricted to SQLite — the
     zero-config local default.
     """
+    from inkprint.core import r2
     from inkprint.core.db import get_engine, init_models
     from inkprint.services import leak_service
 
     if get_engine().dialect.name == "sqlite":
         await init_models()
+
+    # One R2 read in a worker thread so /health's `storage` is truthful from the
+    # first probe after a wake (spec 08). Scheduled, never awaited: a slow R2
+    # must not delay startup. The reference keeps the task from being collected.
+    application.state.storage_probe = asyncio.create_task(asyncio.to_thread(r2.probe_storage))
 
     # Reap any leak scans orphaned in pending/running by a previous
     # suspension/crash so clients always reach a terminal state (REL-2).

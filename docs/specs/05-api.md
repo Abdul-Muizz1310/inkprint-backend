@@ -153,7 +153,8 @@ HTTP surface.
 - [ ] `TC-A-23`: `GET /search` without `text` param returns 422.
 
 ### Platform
-- [ ] `TC-A-24`: `GET /health` returns 200 with `{status: "ok", version, db}`.
+- [ ] `TC-A-24`: `GET /health` returns 200 with `{status: "ok", version, db, storage, commit_sha}`;
+      `storage` is `"ok"` or `"degraded"` (spec 08).
 - [ ] `TC-A-25`: `GET /public-key.pem` returns PEM-encoded Ed25519 public key.
 - [ ] `TC-A-26`: Response includes `X-Request-Id` header.
 - [ ] `TC-A-27`: CORS preflight for allowed origin succeeds.

@@ -15,6 +15,12 @@ import os
 # The limiter has its own dedicated unit test (test_rate_limit.py). Set before
 # any app import so create_app reads it.
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
+# Hermetic: never archive to a real R2 bucket, even when a developer's .env
+# holds credentials. Tests that need R2 patch the settings and the client
+# themselves (spec 08). Assigned, not defaulted, so a shell export cannot leak in.
+os.environ["R2_ENDPOINT"] = ""
+os.environ["R2_ACCESS_KEY_ID"] = ""
+os.environ["R2_SECRET_ACCESS_KEY"] = ""
 
 from collections.abc import AsyncIterator
 
@@ -22,7 +28,7 @@ import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from inkprint.core import db
+from inkprint.core import db, storage_health
 
 
 @pytest.fixture(autouse=True)
@@ -35,7 +41,9 @@ async def db_tables() -> AsyncIterator[None]:
     )
     db.configure_engine(engine)
     await db.init_models()
+    storage_health.reset()
     try:
         yield
     finally:
         await db.dispose_engine()
+        storage_health.reset()

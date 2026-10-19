@@ -212,7 +212,8 @@ src/inkprint/
 │   ├── config.py                   # pydantic-settings from .env
 │   ├── db.py                       # async_sessionmaker + engine
 │   ├── keys.py                     # Ed25519 key loading
-│   └── r2.py                       # Cloudflare R2 (S3-compatible) client + archival
+│   ├── r2.py                       # Cloudflare R2 (S3-compatible) client + archival
+│   └── storage_health.py           # Last R2 outcome → /health `storage` (ok / degraded)
 └── evals/
     ├── runner.py                   # Eval harness
     ├── fingerprint_eval.py         # SimHash-only accuracy (no embedding evaluator yet)
@@ -243,7 +244,7 @@ src/inkprint/
 | `GET`  | `/leak-scan/{id}/stream` | 📡 **SSE** — live scan progress events. |
 | `GET`  | `/search` | Search certificates — exact by content hash, or semantic by embedding cosine similarity. |
 | `GET`  | `/public-key.pem` | Ed25519 public key for offline verification. |
-| `GET`  | `/health` | Liveness probe. |
+| `GET`  | `/health` | Liveness probe: `db`, `storage` (`ok` / `degraded` — R2 archival, from in-process state, no network call), `commit_sha`. |
 | `GET`  | `/version` | Build version. |
 | `GET`  | `/metrics` | Prometheus metrics. |
 
@@ -347,8 +348,8 @@ Three tiers:
 
 | Metric | Value |
 |---|---|
-| **Test count** | 417 tests |
-| **Line coverage** | **98.29%** |
+| **Test count** | 443 tests |
+| **Line coverage** | **98.34%** |
 | **Eval: fingerprint (SimHash-only)** | **86%** (86/100, target >= 85%) — measured, reproducible via `uv run python evals/run_evals.py` |
 | **Eval: fingerprint (SimHash + embedding)** | Not measured. No combined evaluator exists (`evals/fingerprint_eval.py` is SimHash-only); >= 90% is a design target, not a result — see [`evals/report.md`](evals/report.md) |
 | **Eval: tamper resilience** | **100%** (50/50) — measured |
@@ -393,7 +394,9 @@ Render auto-deploys `main` on push (there is **no** CI deploy hook; the deploy j
 was removed) → the container entrypoint runs `alembic upgrade head` → uvicorn starts →
 CI's smoke job polls `/health` if a URL was configured.
 
-Database on Neon (`inkprint` branch). Semantic search ranks embeddings with pure-Python cosine over stored JSON vectors; a pgvector ANN index is an optional production optimization, not currently wired. Certificate archives are uploaded to Cloudflare R2 when `R2_*` is configured — by both the single and the batch path (best-effort; archival never blocks certificate creation). With R2 unconfigured, `storage_key` degrades to the logical `certificates/{id}.json` key, which names where the blob *would* live rather than a live object.
+Database on Neon (`inkprint` branch). Semantic search ranks embeddings with pure-Python cosine over stored JSON vectors; a pgvector ANN index is an optional production optimization, not currently wired. Certificate archives are uploaded to Cloudflare R2 when `R2_*` is configured — by both the single and the batch path. **Archival is best-effort**: it never blocks certificate creation, and with R2 unconfigured or failing, `storage_key` degrades to the logical `certificates/{id}.json` key, which names where the blob *would* live rather than a live object. The certificate itself (text, manifest, signature) always lives in Postgres, which is what `/download` and `/verify` read.
+
+**Archival is currently degraded on the live deployment:** the R2 token it holds is rejected (`Unauthorized`) and is due to be rotated. Every failed R2 call logs a WARNING naming the operation and error class, and `/health` reports `storage: "degraded"` — set from a one-off probe at startup and from each later archive attempt, so the probe itself never calls R2 ([spec 08](docs/specs/08-storage-health.md)).
 
 ---
 

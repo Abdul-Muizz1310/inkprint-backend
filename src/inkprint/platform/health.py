@@ -7,6 +7,7 @@ import os
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from fastapi import APIRouter, Request, Response
 
+from inkprint.core import r2
 from inkprint.core.db import check_db
 
 router = APIRouter()
@@ -33,12 +34,17 @@ def resolve_commit_sha() -> str:
 
 @router.get("/health")
 async def health() -> dict[str, str]:
-    """Health check endpoint."""
+    """Health check endpoint.
+
+    ``storage`` is R2 archival's recorded state (spec 08): in-process only, so a
+    probe never makes a network call to R2.
+    """
     db_status = await check_db()
     return {
         "status": "ok",
         "version": "0.1.0",
         "db": db_status,
+        "storage": r2.storage_status(),
         "commit_sha": resolve_commit_sha(),
     }
 
