@@ -348,7 +348,7 @@ Three tiers:
 
 | Metric | Value |
 |---|---|
-| **Test count** | 443 tests |
+| **Test count** | 445 tests |
 | **Line coverage** | **98.34%** |
 | **Eval: fingerprint (SimHash-only)** | **86%** (86/100, target >= 85%) — measured, reproducible via `uv run python evals/run_evals.py` |
 | **Eval: fingerprint (SimHash + embedding)** | Not measured. No combined evaluator exists (`evals/fingerprint_eval.py` is SimHash-only); >= 90% is a design target, not a result — see [`evals/report.md`](evals/report.md) |

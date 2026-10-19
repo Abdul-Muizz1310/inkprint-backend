@@ -114,6 +114,11 @@ HTTP surface.
 - `X-Platform-Token`: JWT validator (bastion integration). In `DEMO_MODE=true`, accept any token with warning log.
 - CORS: allowlist `inkprint-frontend.vercel.app`, `bastion-six.vercel.app`, `localhost:3000`.
 - `MAX_TEXT_BYTES` enforced in Pydantic schema validators, not just at middleware.
+- Rate limit: per-client fixed window on the write/scan routes (`platform/rate_limit.py`). The
+  container runs uvicorn with `--proxy-headers --forwarded-allow-ips '*'`: behind Render's edge the
+  socket peer is the proxy for every caller, so without the flags `request.client.host` (the limiter's
+  key) is the edge and the whole internet shares one bucket. With them it is the leftmost
+  `X-Forwarded-For` entry, the visitor.
 
 ## Test cases
 
@@ -163,6 +168,10 @@ HTTP surface.
 ### Security
 - [ ] `TC-A-29`: Non-UUID path parameter returns 422, not 500.
 - [ ] `TC-A-30`: Request body > 1 MB is rejected (FastAPI default + explicit limit).
+- [x] `TC-A-32`: the Dockerfile's `CMD` runs uvicorn with `--proxy-headers` and
+      `--forwarded-allow-ips '*'`.
+- [x] `TC-A-33`: two visitors behind one proxy (distinct leftmost `X-Forwarded-For`) get separate
+      rate-limit buckets once uvicorn's proxy-headers middleware has run.
 - [x] `TC-A-31`: `POST /certificates` with whitespace-only `text` (`"   "`, `"\t\n"`, NBSP) returns
       422. `canonicalize()` maps those to `b""` (spec 00, TC-C-07), so accepting them would issue a
       signed certificate over zero canonical bytes — every such certificate colliding on

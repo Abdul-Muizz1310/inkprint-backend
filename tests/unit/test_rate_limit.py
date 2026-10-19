@@ -44,3 +44,27 @@ def test_disabled_is_noop() -> None:
     client = _make_app(per_minute=1, enabled=False)
     for _ in range(5):
         assert client.post("/certificates").status_code == 200
+
+
+def test_forwarded_visitors_get_their_own_bucket() -> None:
+    """TC-A-33: with the container's ``--forwarded-allow-ips '*'``, the key is the visitor.
+
+    uvicorn's proxy-headers middleware sets ``request.client.host`` to the
+    leftmost ``X-Forwarded-For`` entry, so two visitors behind the same proxy
+    (Render's edge) are limited separately.
+    """
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+    app = FastAPI()
+    install_rate_limit(app, per_minute=1, enabled=True)
+
+    @app.post("/certificates")
+    async def _create() -> dict[str, str]:
+        return {"ok": "yes"}
+
+    client = TestClient(ProxyHeadersMiddleware(app, trusted_hosts="*"))
+    alice = {"X-Forwarded-For": "203.0.113.7, 10.0.0.1"}
+    bob = {"X-Forwarded-For": "198.51.100.9, 10.0.0.1"}
+    assert client.post("/certificates", headers=alice).status_code == 200
+    assert client.post("/certificates", headers=bob).status_code == 200
+    assert client.post("/certificates", headers=alice).status_code == 429

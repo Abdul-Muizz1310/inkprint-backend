@@ -33,4 +33,11 @@ ENV COMMIT_SHA=${COMMIT_SHA}
 EXPOSE 8000
 # The entrypoint applies Alembic migrations before handing off to the CMD.
 ENTRYPOINT ["./docker-entrypoint.sh"]
-CMD ["uv", "run", "--no-dev", "uvicorn", "inkprint.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --proxy-headers + --forwarded-allow-ips: the container is only reachable
+# through Render's edge proxy, so without these every request's peer address is
+# the proxy and the per-IP rate limiter (platform/rate_limit.py) sees one caller
+# for the whole internet. With them, request.client.host is the leftmost
+# X-Forwarded-For entry: the visitor.
+CMD ["uv", "run", "--no-dev", "uvicorn", "inkprint.main:app", \
+     "--host", "0.0.0.0", "--port", "8000", \
+     "--proxy-headers", "--forwarded-allow-ips", "*"]
