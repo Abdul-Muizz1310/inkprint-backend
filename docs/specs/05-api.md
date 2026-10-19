@@ -21,7 +21,7 @@ Define the exact HTTP routes, request/response schemas, status codes, and middle
 
 ```
 POST   /certificates                  201 → Certificate
-GET    /certificates/{id}             200 → Certificate
+GET    /certificates/{id}             200 → CertificateDetail (Certificate + text)
 GET    /certificates/{id}/manifest    200 → C2PA manifest JSON
 GET    /certificates/{id}/qr          200 → image/png
 GET    /certificates/{id}/download    200 → application/zip
@@ -51,6 +51,17 @@ Response 201: {
   signature: str, manifest: dict, storage_key: str|null
 }
 ```
+
+### `GET /certificates/{id}`
+```
+Response 200: Certificate fields (as above) + { text: str }
+```
+
+`text` is the stored text exactly as submitted (not canonicalized), so a reader
+can show or diff the certified words without unpacking the `/download` zip. It is
+no new exposure: `/download` already serves the same text as `content.txt`, and
+both are public verification reads. Only this read carries it — the
+`POST /certificates` response and the batch responses keep their shape.
 
 ### `POST /verify`
 ```
@@ -129,6 +140,9 @@ HTTP surface.
 - [ ] `TC-A-04`: `POST /certificates` with empty `author` returns 422.
 - [ ] `TC-A-05`: `GET /certificates/{id}` for existing cert returns 200.
 - [ ] `TC-A-06`: `GET /certificates/{id}` for non-existent ID returns 404.
+- [x] `TC-A-34`: `GET /certificates/{id}` returns `text` exactly as submitted — multibyte
+      characters, inner and edge whitespace and line breaks intact (not the canonical form).
+- [x] `TC-A-35`: the `POST /certificates` response carries no `text` (its shape is unchanged).
 - [ ] `TC-A-07`: `GET /certificates/{id}/manifest` returns valid C2PA JSON.
 - [ ] `TC-A-08`: `GET /certificates/{id}/qr` returns `image/png` with content.
 - [ ] `TC-A-09`: `GET /certificates/{id}/download` returns an `application/zip` archive containing

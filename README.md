@@ -230,7 +230,7 @@ src/inkprint/
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `POST` | `/certificates` | Issue a signed provenance certificate. Returns `{certificate_id, manifest}`. |
-| `GET`  | `/certificates/{id}` | Fetch certificate metadata + manifest. |
+| `GET`  | `/certificates/{id}` | Fetch certificate metadata + manifest, and the stored `text` exactly as submitted. |
 | `GET`  | `/certificates/{id}/manifest` | Raw C2PA v2.2 JSON manifest. |
 | `GET`  | `/certificates/{id}/qr` | QR code PNG linking to the certificate page. |
 | `GET`  | `/certificates/{id}/download` | `.zip` archive: `manifest.json` + `public_key.pem` + `content.txt` (the stored text). |
@@ -348,7 +348,7 @@ Three tiers:
 
 | Metric | Value |
 |---|---|
-| **Test count** | 445 tests |
+| **Test count** | 447 tests |
 | **Line coverage** | **98.34%** |
 | **Eval: fingerprint (SimHash-only)** | **86%** (86/100, target >= 85%) — measured, reproducible via `uv run python evals/run_evals.py` |
 | **Eval: fingerprint (SimHash + embedding)** | Not measured. No combined evaluator exists (`evals/fingerprint_eval.py` is SimHash-only); >= 90% is a design target, not a result — see [`evals/report.md`](evals/report.md) |

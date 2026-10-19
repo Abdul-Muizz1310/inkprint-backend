@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from fastapi import APIRouter, HTTPException, Request, Response
 
-from inkprint.schemas.certificate import CertificateCreate, CertificateResponse
+from inkprint.schemas.certificate import CertificateCreate, CertificateDetail, CertificateResponse
 
 router = APIRouter()
 
@@ -47,15 +47,15 @@ async def create_certificate(body: CertificateCreate, request: Request) -> Certi
     return CertificateResponse(**{k: record[k] for k in CertificateResponse.model_fields})
 
 
-@router.get("/certificates/{cert_id}", response_model=CertificateResponse)
-async def get_certificate(cert_id: UUID) -> CertificateResponse:
-    """Retrieve a certificate by ID."""
+@router.get("/certificates/{cert_id}", response_model=CertificateDetail)
+async def get_certificate(cert_id: UUID) -> CertificateDetail:
+    """Retrieve a certificate by ID, with its stored text (spec 05 TC-A-34)."""
     from inkprint.services.certificate_service import get_certificate as svc_get
 
     record = await svc_get(str(cert_id))
     if record is None:
         raise HTTPException(status_code=404, detail="Certificate not found")
-    return CertificateResponse(**{k: record[k] for k in CertificateResponse.model_fields})
+    return CertificateDetail(**{k: record[k] for k in CertificateDetail.model_fields})
 
 
 @router.get("/certificates/{cert_id}/manifest")

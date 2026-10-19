@@ -121,6 +121,30 @@ class TestCertificates:
         assert resp.json()["id"] == cert_id
 
     @pytest.mark.asyncio
+    async def test_tc_a_34_get_certificate_carries_the_stored_text(self, client):
+        """TC-A-34: GET /certificates/{id} returns the text exactly as submitted.
+
+        The certificate page and the compare page need the certified words; the
+        only other public source is /download, which is a zip, and reading it as
+        text showed raw ``PK`` bytes.
+        """
+        text = "  Café ☕ — first line\n\nsecond\tline with  double spaces  "
+        create = await client.post("/certificates", json={"text": text, "author": "a@b.com"})
+        cert_id = create.json()["id"]
+        resp = await client.get(f"/certificates/{cert_id}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["text"] == text
+        assert not body["text"].startswith("PK")
+
+    @pytest.mark.asyncio
+    async def test_tc_a_35_create_response_does_not_carry_text(self, client):
+        """TC-A-35: the POST /certificates response shape is unchanged."""
+        create = await client.post("/certificates", json={"text": "Hello", "author": "a@b.com"})
+        assert create.status_code == 201
+        assert "text" not in create.json()
+
+    @pytest.mark.asyncio
     async def test_tc_a_06_get_nonexistent(self, client):
         """TC-A-06: GET /certificates/{id} for non-existent returns 404."""
         resp = await client.get(f"/certificates/{uuid4()}")

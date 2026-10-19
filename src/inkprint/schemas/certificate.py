@@ -47,6 +47,16 @@ class CertificateResponse(BaseModel):
     storage_key: str
 
 
+class CertificateDetail(CertificateResponse):
+    """Response body for ``GET /certificates/{id}``: the certificate plus its text.
+
+    ``text`` is the stored text exactly as submitted (spec 05 TC-A-34), the same
+    words ``/download`` packs as ``content.txt`` — a public verification read.
+    """
+
+    text: str
+
+
 class VerifyRequest(BaseModel):
     """Request body for POST /verify."""
 
