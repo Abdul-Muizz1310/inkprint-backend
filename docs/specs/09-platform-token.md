@@ -92,10 +92,18 @@ and `POST /dossiers/envelope`. A path is matched exactly (`{id}` is one non-empt
 
 ## 5. Rate limiting
 
-Buckets key on `"{iss}:{sub}"` when the request is authenticated, else on `request.client.host`,
-which is the leftmost `X-Forwarded-For` entry because the container runs uvicorn with
-`--proxy-headers --forwarded-allow-ips '*'` (spec 05). Public routes are not authenticated, so they
-key on the client address. The token middleware runs **before** the limiter.
+The address below is `request.client.host`: the leftmost `X-Forwarded-For` entry, because the
+container runs uvicorn with `--proxy-headers --forwarded-allow-ips '*'` (spec 05). Buckets key on:
+
+| Caller | Bucket |
+|---|---|
+| authenticated with bastion's key | `"bastion:{sub}"` (the visitor pseudonym, wherever it connects from) |
+| authenticated with the frontend key | `"inkprint-frontend:{address}"` — the frontend's `sub` is constant, so keying on it would put every visitor of the site in one bucket; its proxy forwards exactly one address |
+| not authenticated | the bare address |
+
+Public routes are not authenticated, so they key on the address. The token middleware runs
+**before** the limiter. (Contract v2 as amended 2026-10-20; the first draft keyed every
+authenticated request on `iss:sub`.)
 
 ## 6. CORS and middleware order
 
@@ -130,8 +138,10 @@ headers: `content-type`, `x-platform-token`, `x-request-id`, `authorization`, `l
   without a token), 200 on `/health`.
 - **PT-13** every public route answers without a token (not 401/503), with no key configured and
   with keys configured; every protected route listed in §4 answers 401 without a token.
-- **PT-14** the rate-limit key is `iss:sub` for an authenticated request (two subs from one address
-  get two buckets; one sub from two addresses shares one).
+- **PT-14** the rate-limit key is `bastion:{sub}` for a bastion token (two subs from one address get
+  two buckets; one sub from two addresses shares one) and `inkprint-frontend:{address}` for a
+  frontend token (two visitors through the frontend — one socket peer, distinct leftmost
+  `X-Forwarded-For` — land in different buckets; the same visitor twice shares one).
 
 ### Further pass cases
 

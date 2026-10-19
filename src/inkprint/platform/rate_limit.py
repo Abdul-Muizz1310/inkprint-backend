@@ -2,10 +2,18 @@
 
 Caps the request rate on the expensive endpoints so no caller can trigger
 unbounded paid Voyage-embedding calls and outbound corpus scans. The bucket is
-the caller (spec 09 §5): ``"{iss}:{sub}"`` when the platform-token middleware —
-which runs before this one — authenticated the request, else the client
-address, which is the visitor's leftmost ``X-Forwarded-For`` entry because the
-container runs uvicorn with ``--proxy-headers --forwarded-allow-ips '*'``.
+the caller (spec 09 §5), as the platform-token middleware — which runs before
+this one — identified it:
+
+- bastion's key: ``"bastion:{sub}"``, the visitor pseudonym;
+- the frontend's key: ``"{iss}:{address}"`` — its ``sub`` is constant, so keying
+  on it would put every visitor of the site in one bucket;
+- no token: the bare address.
+
+The address is ``request.client.host``, the visitor's leftmost
+``X-Forwarded-For`` entry because the container runs uvicorn with
+``--proxy-headers --forwarded-allow-ips '*'``; the frontend's proxy sets exactly
+one address there.
 
 In-process (per-worker) and intentionally lightweight — a good-enough abuse
 brake for a single-instance deployment, not a distributed quota system.
@@ -21,7 +29,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
 from inkprint.platform.platform_token import request_principal
-from inkprint.platform.token_verifier import Principal
+from inkprint.platform.token_verifier import BASTION_ISSUER, Principal
 
 # (method, path) pairs that are rate limited.
 _LIMITED: frozenset[tuple[str, str]] = frozenset(
@@ -40,10 +48,13 @@ _Handler = Callable[[Request], Awaitable[Response]]
 
 
 def rate_limit_identity(principal: Principal | None, client_host: str | None) -> str:
-    """``iss:sub`` for an authenticated caller, else the client address."""
-    if principal is not None:
-        return f"{principal.iss}:{principal.sub}"
-    return client_host or "unknown"
+    """The bucket: ``bastion:{sub}``, ``{frontend iss}:{address}``, or the bare address."""
+    address = client_host or "unknown"
+    if principal is None:
+        return address
+    if principal.iss == BASTION_ISSUER:
+        return f"{BASTION_ISSUER}:{principal.sub}"
+    return f"{principal.iss}:{address}"
 
 
 def install_rate_limit(app: FastAPI, *, per_minute: int, enabled: bool = True) -> None:

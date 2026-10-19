@@ -130,7 +130,7 @@ HTTP surface.
   (non-production); allowed request headers include `x-platform-token` (spec 09 §6).
 - `MAX_TEXT_BYTES` enforced in Pydantic schema validators, not just at middleware.
 - Rate limit: per-caller fixed window on the write/scan routes (`platform/rate_limit.py`), keyed
-  on `iss:sub` for an authenticated request (spec 09 §5), else on the client address. The
+  on `bastion:{sub}`, `inkprint-frontend:{address}` or the bare address (spec 09 §5). The
   container runs uvicorn with `--proxy-headers --forwarded-allow-ips '*'`: behind Render's edge the
   socket peer is the proxy for every caller, so without the flags `request.client.host` (the limiter's
   key) is the edge and the whole internet shares one bucket. With them it is the leftmost

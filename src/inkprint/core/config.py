@@ -54,8 +54,8 @@ class Settings(BaseSettings):
     frontend_base_url: str = "https://inkprint-frontend.vercel.app"
 
     # ─── Rate limiting ──────────────────────────────
-    # Fixed-window throttle on the write/scan endpoints, keyed on ``iss:sub``
-    # for an authenticated caller and on the client address otherwise
+    # Fixed-window throttle on the write/scan endpoints, keyed on
+    # ``bastion:{sub}``, ``inkprint-frontend:{address}`` or the bare address
     # (spec 09 §5). On by default so no caller can be driven to burn unbounded
     # paid Voyage-embedding / corpus-scan calls.
     rate_limit_enabled: bool = True

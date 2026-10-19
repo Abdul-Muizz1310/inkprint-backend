@@ -205,7 +205,7 @@ src/inkprint/
 ├── platform/
 │   ├── health.py                   # /health, /version, /public-key.pem, commit-SHA resolution
 │   ├── middleware.py               # X-Request-ID, CORS (allows x-platform-token)
-│   ├── rate_limit.py               # Per-caller (iss:sub, else client address) throttle on write/scan routes
+│   ├── rate_limit.py               # Per-caller throttle on write/scan routes (bastion:sub, frontend:address, address)
 │   ├── platform_token.py           # X-Platform-Token middleware (contract v2: 401 / 503, DEMO_MODE)
 │   ├── token_verifier.py           # Pure EdDSA token check: issuer per key, aud, leeway, lifetime
 │   ├── trusted_keys.py             # bastion + inkprint-frontend public keys (env, cached URL fetch)
@@ -264,7 +264,7 @@ Every non-public route needs an EdDSA (Ed25519) JWT in `X-Platform-Token` (or `A
 - **Answers:** a missing token → `401 missing_platform_token`; a token that fails any check → `401 invalid_platform_token` (a WARNING names the check, never the token); no key configured → `503 platform_auth_unconfigured` (fail closed).
 - **`DEMO_MODE`** (default `false`) tolerates only a *missing* token, logged; a present token is always verified.
 - **Public:** `GET /certificates/{id}` and its `/manifest`, `/qr`, `/download`; `POST /verify`, `POST /verify/batch`; `GET /public-key.pem`; `/health`, `/version`, `/docs`, `/redoc`, `/openapi.json`, `/metrics`.
-- **Rate limits** key on `iss:sub` for a token-bearing caller, else on the visitor's address (uvicorn runs with `--proxy-headers --forwarded-allow-ips '*'` behind Render).
+- **Rate limits** key on `bastion:{sub}` for a bastion token, on `inkprint-frontend:{visitor address}` for the frontend's (its `sub` is constant), else on the visitor's address — the leftmost `X-Forwarded-For` entry, since uvicorn runs with `--proxy-headers --forwarded-allow-ips '*'` behind Render.
 
 ---
 
@@ -368,8 +368,8 @@ Three tiers:
 
 | Metric | Value |
 |---|---|
-| **Test count** | 632 tests |
-| **Line coverage** | **98.66%** |
+| **Test count** | 634 tests |
+| **Line coverage** | **98.67%** |
 | **Eval: fingerprint (SimHash-only)** | **86%** (86/100, target >= 85%) — measured, reproducible via `uv run python evals/run_evals.py` |
 | **Eval: fingerprint (SimHash + embedding)** | Not measured. No combined evaluator exists (`evals/fingerprint_eval.py` is SimHash-only); >= 90% is a design target, not a result — see [`evals/report.md`](evals/report.md) |
 | **Eval: tamper resilience** | **100%** (50/50) — measured |

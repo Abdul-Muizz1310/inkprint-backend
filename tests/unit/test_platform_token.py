@@ -271,7 +271,8 @@ def test_pt13_protected_routes_demand_a_token() -> None:
 # ── PT-14: rate-limit identity ───────────────────────────────────────────────
 
 
-def test_pt14_authenticated_requests_are_limited_per_iss_and_sub() -> None:
+def test_pt14_bastion_requests_are_limited_per_subject() -> None:
+    """``bastion:{sub}``: the visitor pseudonym is the bucket, wherever it connects from."""
     client = _client(rate_limit_enabled=True, rate_limit_per_minute=1)
     elsewhere = TestClient(client.app, client=("198.51.100.1", 50000))
     alice = sign(BASTION, bastion_claims(sub="v_alice00000"))
@@ -282,6 +283,39 @@ def test_pt14_authenticated_requests_are_limited_per_iss_and_sub() -> None:
     # Same subject from another address: the same bucket.
     alice_again = sign(BASTION, bastion_claims(sub="v_alice00000"))
     assert _issue(elsewhere, alice_again).status_code == 429
+
+
+def _behind_render(**overrides: Any) -> TestClient:
+    """The deployed shape: uvicorn's proxy-headers middleware ('*') in front of the app.
+
+    Every request reaches the app from one socket peer (Render's edge), so only
+    the leftmost ``X-Forwarded-For`` entry tells visitors apart.
+    """
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+    app = create_app(_settings(**overrides))
+    return TestClient(ProxyHeadersMiddleware(app, trusted_hosts="*"), client=("10.0.0.1", 50000))
+
+
+def test_pt14_two_visitors_through_the_frontend_land_in_different_buckets() -> None:
+    """``{iss}:{leftmost X-Forwarded-For}``: the frontend's constant ``sub`` is not the bucket."""
+    client = _behind_render(rate_limit_enabled=True, rate_limit_per_minute=1)
+    alice = {"X-Forwarded-For": "203.0.113.7, 10.0.0.9"}
+    bob = {"X-Forwarded-For": "198.51.100.9, 10.0.0.9"}
+    assert _issue(client, sign(FRONTEND, frontend_claims()), **alice).status_code == 201
+    assert _issue(client, sign(FRONTEND, frontend_claims()), **bob).status_code == 201
+    # The same visitor again, with a fresh token: the same bucket.
+    assert _issue(client, sign(FRONTEND, frontend_claims()), **alice).status_code == 429
+
+
+def test_pt14_a_frontend_visitor_and_an_anonymous_caller_do_not_share_a_bucket() -> None:
+    """The frontend bucket is prefixed with its issuer; an anonymous one is the bare address."""
+    client = _behind_render(rate_limit_enabled=True, rate_limit_per_minute=1)
+    alice = {"X-Forwarded-For": "203.0.113.7"}
+    body = {"manifest": {}}
+    # POST /verify is public, so this one is anonymous whatever it carries.
+    assert client.post("/verify", json=body, headers=alice).status_code != 429
+    assert _issue(client, sign(FRONTEND, frontend_claims()), **alice).status_code == 201
 
 
 def test_pt14_anonymous_requests_are_limited_per_address() -> None:
