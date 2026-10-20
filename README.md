@@ -210,6 +210,7 @@ src/inkprint/
 │   ├── token_verifier.py           # Pure EdDSA token check: issuer per key, aud, leeway, lifetime
 │   ├── trusted_keys.py             # bastion + inkprint-frontend public keys (env, cached URL fetch)
 │   ├── public_routes.py            # The verification surfaces that never need a token
+│   ├── query_observability.py      # slowquery-detective install: store beside the data, bastion-only reads
 │   └── logging.py                  # stdlib JSON logging config
 ├── core/
 │   ├── config.py                   # pydantic-settings from .env
@@ -290,6 +291,8 @@ Every non-public route needs an EdDSA (Ed25519) JWT in `X-Platform-Token` (or `A
 
 Every request gets a unique `X-Request-ID` header. The stdlib logging config emits structured JSON logs in production. Prometheus `/metrics` endpoint exposes request latency, counts, and active connections.
 
+**Per-request query receipts** ([slowquery-detective](https://pypi.org/project/slowquery-detective/) 0.2, [spec 10](docs/specs/10-query-observability.md)): every statement a request tagged `X-Request-Id: R` runs is counted against R in schema `slowquery` of inkprint's own Postgres (beside the Alembic-managed tables and pgvector; the in-memory store on SQLite). `GET /_slowquery/queries?request_id=R` lists them — 🔐 bastion's token only: a missing or invalid token is 401, the frontend's token 403.
+
 ---
 
 ## 🚀 Run locally
@@ -368,8 +371,8 @@ Three tiers:
 
 | Metric | Value |
 |---|---|
-| **Test count** | 634 tests |
-| **Line coverage** | **98.67%** |
+| **Test count** | 656 tests |
+| **Line coverage** | **98.68%** |
 | **Eval: fingerprint (SimHash-only)** | **86%** (86/100, target >= 85%) — measured, reproducible via `uv run python evals/run_evals.py` |
 | **Eval: fingerprint (SimHash + embedding)** | Not measured. No combined evaluator exists (`evals/fingerprint_eval.py` is SimHash-only); >= 90% is a design target, not a result — see [`evals/report.md`](evals/report.md) |
 | **Eval: tamper resilience** | **100%** (50/50) — measured |

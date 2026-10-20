@@ -312,3 +312,115 @@ class TestAlembicNeedsOnlyAsyncpg:
             f"alembic could not run without psycopg2:\n{result.stdout}\n{result.stderr}"
         )
         assert "psycopg2" not in result.stderr
+
+
+class TestQueryObservabilityOnRealPostgres:
+    """Spec 10 QO-11/QO-12: slowquery-detective's Postgres store beside the migrated schema."""
+
+    @staticmethod
+    def _app() -> Any:
+        from inkprint.core.config import Settings
+        from inkprint.main import create_app
+        from tests.platform_keys import keypair
+
+        bastion = keypair()
+        settings = Settings(
+            _env_file=None,
+            app_env="production",
+            demo_mode=False,
+            bastion_signing_key_public=bastion.public_b64,
+            bastion_public_key_url="",
+            inkprint_frontend_signing_key_public="",
+            rate_limit_enabled=False,
+        )
+        return create_app(settings), bastion
+
+    async def test_qo11_a_tagged_request_is_listed_from_the_postgres_store(
+        self, pg_engine: Any
+    ) -> None:
+        from slowquery_detective import PostgresStoreWriter
+
+        from tests.platform_keys import bastion_claims, sign
+
+        app, bastion = self._app()
+        assert isinstance(app.state.slowquery_store, PostgresStoreWriter)
+        request_id = f"req-pg-{uuid4().hex[:12]}"
+        async with app.router.lifespan_context(app):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                created = await client.post(
+                    "/certificates",
+                    json={"text": "measured on postgres", "author": "pg@example.com"},
+                    headers={
+                        "X-Platform-Token": sign(bastion, bastion_claims()),
+                        "X-Request-Id": request_id,
+                    },
+                )
+                assert created.status_code == 201, created.text
+                measured = await client.get(
+                    "/_slowquery/queries",
+                    params={"request_id": request_id},
+                    headers={"X-Platform-Token": sign(bastion, bastion_claims())},
+                )
+        assert measured.status_code == 200, measured.text
+        fingerprints = [r["fingerprint"].lower() for r in measured.json()]
+        assert any("insert into certificates" in f for f in fingerprints), fingerprints
+
+        async with pg_engine.connect() as conn:
+            stored = (
+                await conn.execute(
+                    text(
+                        "SELECT count(*) FROM slowquery.request_stats "
+                        "WHERE service = 'inkprint' AND request_id = :r"
+                    ),
+                    {"r": request_id},
+                )
+            ).scalar()
+        assert stored and stored >= 1
+
+    async def test_qo12_the_slowquery_schema_coexists_with_pgvector_and_alembic(
+        self, pg_engine: Any, migrated_pg_dsn: str
+    ) -> None:
+        app, _ = self._app()
+        async with pg_engine.connect() as conn:
+            head_before = (
+                await conn.execute(text("SELECT version_num FROM alembic_version"))
+            ).scalar()
+        async with app.router.lifespan_context(app):
+            pass
+
+        async with pg_engine.connect() as conn:
+            tables = {
+                r[0]
+                for r in await conn.execute(
+                    text(
+                        "SELECT table_name FROM information_schema.tables "
+                        "WHERE table_schema = 'slowquery'"
+                    )
+                )
+            }
+            vector = (
+                await conn.execute(text("SELECT 1 FROM pg_extension WHERE extname = 'vector'"))
+            ).scalar()
+            head_after = (
+                await conn.execute(text("SELECT version_num FROM alembic_version"))
+            ).scalar()
+        assert {
+            "query_fingerprints",
+            "request_stats",
+            "query_samples",
+            "explain_plans",
+            "suggestions",
+            "schema_version",
+        } <= tables
+        assert vector == 1
+        assert head_after == head_before
+
+        rerun = subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            cwd=REPO_ROOT,
+            env={**_clean_env(), "DATABASE_URL": migrated_pg_dsn},
+            capture_output=True,
+            text=True,
+        )
+        assert rerun.returncode == 0, rerun.stderr

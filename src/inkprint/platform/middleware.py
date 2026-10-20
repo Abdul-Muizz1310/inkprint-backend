@@ -32,13 +32,8 @@ def _allowed_origins(app_env: str) -> list[str]:
     return origins
 
 
-def add_middleware(app: FastAPI, *, app_env: str) -> None:
-    """Attach the request-id and CORS middleware to ``app``.
-
-    Call this after every other ``http`` middleware: the last one added is the
-    outermost, and CORS must be outermost so it answers preflights itself and
-    decorates a 401/503 from the platform-token middleware (spec 09 §6).
-    """
+def add_request_id(app: FastAPI) -> None:
+    """Echo ``X-Request-Id`` (or a fresh UUID) on every response."""
 
     @app.middleware("http")
     async def request_id_middleware(
@@ -49,6 +44,12 @@ def add_middleware(app: FastAPI, *, app_env: str) -> None:
         response.headers["X-Request-Id"] = request_id
         return response
 
+
+def add_cors(app: FastAPI, *, app_env: str) -> None:
+    """Attach CORS. Call it last: the last middleware added is the outermost, and
+    CORS must be outermost so it answers preflights itself and decorates a 401/503
+    from the platform-token middleware (spec 09 §6, spec 10).
+    """
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_allowed_origins(app_env),

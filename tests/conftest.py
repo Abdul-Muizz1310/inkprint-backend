@@ -27,6 +27,11 @@ os.environ["R2_SECRET_ACCESS_KEY"] = ""
 # bastion URL makes the app fetch a real key; the contract-v2 tests build their
 # own app with explicit keys (tests/unit/test_platform_token.py).
 os.environ["APP_ENV"] = "test"
+# Hermetic database too: importing inkprint.main builds the module-level app,
+# whose engine and slowquery store (spec 10) come from DATABASE_URL. Blank, it is
+# the local SQLite default and the in-memory store, never a developer's Neon
+# branch. Tests that need Postgres build their own engine (the postgres tier).
+os.environ["DATABASE_URL"] = ""
 os.environ["DEMO_MODE"] = "false"
 os.environ["BASTION_SIGNING_KEY_PUBLIC"] = ""
 os.environ["BASTION_PUBLIC_KEY_URL"] = ""
