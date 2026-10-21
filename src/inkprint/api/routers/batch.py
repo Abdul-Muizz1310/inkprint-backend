@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 
 from inkprint.schemas.batch import (
     BatchCertificateCreateRequest,
@@ -15,11 +15,7 @@ from inkprint.schemas.batch import (
     BatchVerifyRequest,
     BatchVerifyResponse,
 )
-from inkprint.services.batch_service import (
-    EmbeddingServiceUnavailableError,
-    create_batch,
-    verify_batch,
-)
+from inkprint.services.batch_service import create_batch, verify_batch
 
 router = APIRouter()
 
@@ -47,15 +43,14 @@ async def create_certificates_batch(
         {"text": it.text, "author": it.author, "metadata": it.metadata} for it in body.items
     ]
 
-    try:
-        service_results = await create_batch(
-            items_as_dicts,
-            private_key=private_key,
-            public_key=public_key,
-            key_id=key_id,
-        )
-    except EmbeddingServiceUnavailableError as exc:
-        raise HTTPException(status_code=503, detail="Embedding service unavailable") from exc
+    # Embeddings are best-effort (spec 07): a failed embedding call still
+    # certifies every item, so there is no embedding-specific error to map.
+    service_results = await create_batch(
+        items_as_dicts,
+        private_key=private_key,
+        public_key=public_key,
+        key_id=key_id,
+    )
 
     return BatchCertificateResponse(
         certificates=[

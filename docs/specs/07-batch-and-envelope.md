@@ -67,7 +67,7 @@ Issue N certificates atomically.
       "fingerprints": {
         "sha256": "hex...",
         "simhash": 1234567890,
-        "embedding_id": "uuid"    // per-certificate handle for the stored embedding
+        "embedding_id": "uuid"    // handle for the stored embedding; null when none was computed
       }
     }
   ]
@@ -78,7 +78,11 @@ Items in the response appear in the **same order as the request**.
 
 **Atomicity**
 
-The endpoint issues `len(items)` certificates inside a single logical transaction. If any step fails — shape validation, embedding API failure, manifest schema validation — no certificates from this request are retained. The service builds every record into a local list first and commits them all in one `session_scope()` (`certificate_repo.add_many`) only on full success, so a mid-batch failure never leaves partial state.
+The endpoint issues `len(items)` certificates inside a single logical transaction. If any step fails — shape validation, manifest schema validation, the database write — no certificates from this request are retained. The service builds every record into a local list first and commits them all in one `session_scope()` (`certificate_repo.add_many`) only on full success, so a mid-batch failure never leaves partial state.
+
+**Embeddings are best-effort.** Certification — the canonical SHA-256 and the Ed25519 signature over it — never depends on the embedding quota. The batch is embedded in one Voyage request (OPT-1); when that request fails for any reason (a 429 from a free-tier key — 3 RPM, 10K TPM, so twelve scraped pages exceed it in one call — a 5xx, a timeout, no key), every item is still certified, exactly as the single-certificate path does: each stores the zero-vector fallback, its `fingerprints.embedding_id` is `null`, and the service logs **one** WARNING naming the failure class (never the text). The response is the normal 200. The consequence: semantic search (`GET /search?mode=semantic`) does not rank those certificates (a zero vector has no positive cosine similarity), while exact search, verification, `/download` and the manifest are unaffected.
+
+The Voyage client is built with `max_retries=0` and a 15 s request timeout (the SDK default is 600 s), so a rate-limited or hung embedding call fails fast instead of eating the caller's budget (bastion gives the batch call 60 s).
 
 R2 archival runs after the records are assembled and before the commit, concurrently across the batch. It is best-effort by contract: with R2 configured each record's `storage_key` is rewritten to the real R2 key; with R2 absent or failing it degrades to the logical `certificates/{id}.json` key, identical to the single-certificate path. Archival never fails the batch.
 
@@ -90,7 +94,8 @@ R2 archival runs after the records are assembled and before the commit, concurre
 | > 50 items | 422 | Pydantic validation error |
 | Item with empty text | 422 | Pydantic validation error |
 | Item with text > 1_000_000 chars | 422 | Pydantic validation error |
-| Embedding API failure mid-batch | 503 | `{"detail": "Embedding service unavailable"}` — no partial commit |
+| Embedding API failure (429, 5xx, timeout) | 200 | Every item certified; `embedding_id: null`; one WARNING — see "Embeddings are best-effort" |
+| Database write failure mid-batch | 500 | Nothing committed (the transaction rolls back) |
 
 ### `POST /dossiers/envelope`
 
@@ -267,7 +272,11 @@ tier and against real Postgres — JSONB, UUID[], BYTEA, TIMESTAMPTZ — in the
 | `TC-B-07` | 51-item list → 422. |
 | `TC-B-08` | Item with empty text → 422. |
 | `TC-B-09` | Item with text > 1_000_000 chars → 422. |
-| `TC-B-10` | Embedding API failure mid-batch → 503 AND no certificates committed (store size unchanged). |
+| `TC-B-10` | The Voyage client answers 429 (`RateLimitError`) → 200; every item is certified (store size + N), its `embedding_id` is `null`, its stored embedding is the zero vector, and `POST /verify/batch` reports each `valid` with `signature` and `hash` true. One WARNING names `RateLimitError` and contains none of the texts. |
+| `TC-B-10b` | Any other embedding failure (a 5xx, a timeout, a missing key, or an answer whose vector count does not match the texts) behaves as TC-B-10. |
+| `TC-B-10c` | A database failure while writing the batch (after some rows were added to the session) → nothing committed: the store size is unchanged. |
+| `TC-B-10d` | A successful embedding still yields a UUID `embedding_id` per item and stores the real vectors (no regression). |
+| `TC-B-10e` | The Voyage client is built with `max_retries=0` and a 15 s request timeout; with the SDK's request answering 429, `compute_embeddings` makes exactly one request and raises within 2 s. |
 | `TC-B-25` | Item with whitespace-only text (`"   "`, `"\t\n"`, NBSP, ideographic space) → 422. `min_length=1` does not close this: `canonicalize()` maps them to `b""`, so the batch would sign certificates over zero canonical bytes and every one would collide on `sha256(b"")`. |
 | `TC-B-26` | Every certificate returned by the batch path carries a `storage_key` that reflects where the blob actually lives — the R2 key when R2 is configured, the logical fallback key when it is not. The single-certificate path's behaviour and the batch path's behaviour are identical. |
 

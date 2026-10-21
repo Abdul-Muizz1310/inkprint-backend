@@ -10,14 +10,33 @@ single-text convenience wrapper.
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Final
 
 import voyageai
+
+# The SDK's default request timeout is 600 s. Embeddings are best-effort (the
+# callers fall back to ZERO_EMBEDDING), so a rate-limited or hung call must fail
+# fast rather than eat the caller's budget — bastion gives a batch call 60 s.
+EMBED_TIMEOUT_S: Final = 15.0
+
+# The stored fallback when no embedding could be computed: it has no positive
+# cosine similarity with anything, so semantic search simply never ranks it.
+EMBEDDING_FALLBACK_DIM: Final = 768
+
+
+def zero_embedding() -> list[float]:
+    """The fallback vector stored when the embedding call fails."""
+    return [0.0] * EMBEDDING_FALLBACK_DIM
 
 
 @lru_cache(maxsize=1)
 def _client() -> voyageai.AsyncClient:  # type: ignore[name-defined]
-    """Return the process-wide Voyage async client (constructed once)."""
-    return voyageai.AsyncClient()  # type: ignore[attr-defined]
+    """Return the process-wide Voyage async client (constructed once).
+
+    ``max_retries=0`` (one attempt: a 429 fails at once instead of backing off
+    for up to a minute) and a short timeout — see ``EMBED_TIMEOUT_S``.
+    """
+    return voyageai.AsyncClient(max_retries=0, timeout=EMBED_TIMEOUT_S)  # type: ignore[attr-defined]
 
 
 async def compute_embeddings(texts: list[str]) -> list[list[float]]:
