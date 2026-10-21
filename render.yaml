@@ -49,6 +49,14 @@ services:
         sync: false
       - key: LANGFUSE_BASE_URL
         sync: false
+      # Platform contract v2 (docs/specs/09-platform-token.md): the public halves
+      # of bastion's key and of inkprint-frontend's proxy key, base64 SPKI DER.
+      - key: BASTION_SIGNING_KEY_PUBLIC
+        sync: false
+      - key: INKPRINT_FRONTEND_SIGNING_KEY_PUBLIC
+        sync: false
+      # Transition switch: tolerates a missing token only. Flip to "false" once
+      # inkprint-frontend's signing proxy is live (contract v2 rollout step d).
       - key: DEMO_MODE
         value: "true"
       - key: PORT

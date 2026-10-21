@@ -122,10 +122,15 @@ HTTP surface.
 ## Middleware (platform module)
 
 - `X-Request-Id`: generate UUID if absent, echo in response, inject into structlog context.
-- `X-Platform-Token`: JWT validator (bastion integration). In `DEMO_MODE=true`, accept any token with warning log.
-- CORS: allowlist `inkprint-frontend.vercel.app`, `bastion-six.vercel.app`, `localhost:3000`.
+- `X-Platform-Token`: platform contract v2 — bastion's or inkprint-frontend's EdDSA token on every
+  non-public route, `aud == "inkprint"`; public verification surfaces; `DEMO_MODE` tolerates only a
+  missing token; 503 with no key configured. Specified in full in
+  [`09-platform-token.md`](09-platform-token.md).
+- CORS: allowlist `inkprint-frontend.vercel.app`, `bastion-six.vercel.app`, `localhost:3000`
+  (non-production); allowed request headers include `x-platform-token` (spec 09 §6).
 - `MAX_TEXT_BYTES` enforced in Pydantic schema validators, not just at middleware.
-- Rate limit: per-client fixed window on the write/scan routes (`platform/rate_limit.py`). The
+- Rate limit: per-caller fixed window on the write/scan routes (`platform/rate_limit.py`), keyed
+  on `bastion:{sub}`, `inkprint-frontend:{address}` or the bare address (spec 09 §5). The
   container runs uvicorn with `--proxy-headers --forwarded-allow-ips '*'`: behind Render's edge the
   socket peer is the proxy for every caller, so without the flags `request.client.host` (the limiter's
   key) is the edge and the whole internet shares one bucket. With them it is the leftmost

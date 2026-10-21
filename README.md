@@ -21,7 +21,7 @@
 
 ```console
 $ curl -X POST $API/certificates \
-    -H 'Content-Type: application/json' \
+    -H "X-Platform-Token: $TOKEN" -H 'Content-Type: application/json' \
     -d '{"text":"Your original work here.","author":"you@example.com"}'
 → certificate_id: a7c3...   manifest: /certificates/a7c3.../manifest
 
@@ -31,7 +31,7 @@ $ curl -X POST $API/certificates \
 [manifest]    C2PA v2.2-aligned manifest assembled → Neon + R2
 [done]        certificate issued ✓
 
-$ curl -X POST $API/leak-scan -d '{"certificate_id":"a7c3..."}'
+$ curl -X POST $API/leak-scan -H "X-Platform-Token: $TOKEN" -d '{"certificate_id":"a7c3..."}'
 [scan]        Common Crawl CDX ‖ HuggingFace ‖ The Stack v2
 [score]       confidence 0.12 · 0 near-duplicate hits · clean ✓
 ```
@@ -204,9 +204,13 @@ src/inkprint/
 │   └── validators.py               # Shared field validators (canonical-content guard)
 ├── platform/
 │   ├── health.py                   # /health, /version, /public-key.pem, commit-SHA resolution
-│   ├── middleware.py               # X-Request-ID, CORS
-│   ├── rate_limit.py               # Per-IP fixed-window throttle on write/scan routes
-│   ├── platform_token.py           # X-Platform-Token JWT validator (bastion integration)
+│   ├── middleware.py               # X-Request-ID, CORS (allows x-platform-token)
+│   ├── rate_limit.py               # Per-caller throttle on write/scan routes (bastion:sub, frontend:address, address)
+│   ├── platform_token.py           # X-Platform-Token middleware (contract v2: 401 / 503, DEMO_MODE)
+│   ├── token_verifier.py           # Pure EdDSA token check: issuer per key, aud, leeway, lifetime
+│   ├── trusted_keys.py             # bastion + inkprint-frontend public keys (env, cached URL fetch)
+│   ├── public_routes.py            # The verification surfaces that never need a token
+│   ├── query_observability.py      # slowquery-detective install: store beside the data, bastion-only reads
 │   └── logging.py                  # stdlib JSON logging config
 ├── core/
 │   ├── config.py                   # pydantic-settings from .env
@@ -227,26 +231,41 @@ src/inkprint/
 
 ## 🌐 API surface
 
+Routes marked 🔐 need a platform token ([below](#-platform-token)); the rest are public by design — anyone can check a certificate without asking us.
+
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `POST` | `/certificates` | Issue a signed provenance certificate. Returns `{certificate_id, manifest}`. |
+| `POST` | `/certificates` 🔐 | Issue a signed provenance certificate. Returns `{certificate_id, manifest}`. |
 | `GET`  | `/certificates/{id}` | Fetch certificate metadata + manifest, and the stored `text` exactly as submitted. |
 | `GET`  | `/certificates/{id}/manifest` | Raw C2PA v2.2 JSON manifest. |
 | `GET`  | `/certificates/{id}/qr` | QR code PNG linking to the certificate page. |
 | `GET`  | `/certificates/{id}/download` | `.zip` archive: `manifest.json` + `public_key.pem` + `content.txt` (the stored text). |
-| `POST` | `/certificates/batch` | Issue 1–50 certificates atomically. All-or-nothing: any failure persists none of them. |
+| `POST` | `/certificates/batch` 🔐 | Issue 1–50 certificates atomically. All-or-nothing: any failure persists none of them. |
 | `POST` | `/verify` | Tamper detection — **signature + hash** verdicts over the submitted manifest and text. |
 | `POST` | `/verify/batch` | Verify 1–50 certificates by id. Adds `simhash` and `embedding` verdicts for items that supply `text`; unknown ids fail softly with `reason: "unknown_certificate"`. |
-| `POST` | `/dossiers/envelope` | Sign one C2PA-aligned envelope manifest over a bundle of evidence certificates plus a debate-transcript and perf-receipt hash. Idempotent per `dossier_id`; a different bundle for the same id returns 409. |
-| `POST` | `/diff` | Compare new text against a parent certificate for derivative detection. |
-| `POST` | `/leak-scan` | Start async leak scan across Common Crawl, HuggingFace, The Stack v2. |
-| `GET`  | `/leak-scan/{id}` | Poll leak-scan result. |
-| `GET`  | `/leak-scan/{id}/stream` | 📡 **SSE** — live scan progress events. |
-| `GET`  | `/search` | Search certificates — exact by content hash, or semantic by embedding cosine similarity. |
+| `POST` | `/dossiers/envelope` 🔐 | Sign one C2PA-aligned envelope manifest over a bundle of evidence certificates plus a debate-transcript and perf-receipt hash. Idempotent per `dossier_id`; a different bundle for the same id returns 409. |
+| `POST` | `/diff` 🔐 | Compare new text against a parent certificate for derivative detection. |
+| `POST` | `/leak-scan` 🔐 | Start async leak scan across Common Crawl, HuggingFace, The Stack v2. |
+| `GET`  | `/leak-scan/{id}` 🔐 | Poll leak-scan result. |
+| `GET`  | `/leak-scan/{id}/stream` 🔐 | 📡 **SSE** — live scan progress events. |
+| `GET`  | `/search` 🔐 | Search certificates — exact by content hash, or semantic by embedding cosine similarity. |
 | `GET`  | `/public-key.pem` | Ed25519 public key for offline verification. |
 | `GET`  | `/health` | Liveness probe: `db`, `storage` (`ok` / `degraded` — R2 archival, from in-process state, no network call), `commit_sha`. |
 | `GET`  | `/version` | Build version. |
 | `GET`  | `/metrics` | Prometheus metrics. |
+
+---
+
+## 🔐 Platform token
+
+Every non-public route needs an EdDSA (Ed25519) JWT in `X-Platform-Token` (or `Authorization: Bearer`), minted either by **bastion** or by **inkprint-frontend**'s server-side proxy, which signs each browser call with its own key — the workspace's platform contract v2, specified for this service in [spec 09](docs/specs/09-platform-token.md).
+
+- **Trusted keys:** bastion's (`BASTION_SIGNING_KEY_PUBLIC`, or fetched from `BASTION_PUBLIC_KEY_URL` and cached) with `iss == "bastion"`; the frontend's (`INKPRINT_FRONTEND_SIGNING_KEY_PUBLIC`) with `iss == "inkprint-frontend"` and `role == "frontend"`. The key decides which issuer it vouches for, never the claim.
+- **Checks:** `aud == "inkprint"` (a string — a list or another service's id is refused), `exp`/`iat` with 10 s leeway, a lifetime of at most 300 s.
+- **Answers:** a missing token → `401 missing_platform_token`; a token that fails any check → `401 invalid_platform_token` (a WARNING names the check, never the token); no key configured → `503 platform_auth_unconfigured` (fail closed).
+- **`DEMO_MODE`** (default `false`) tolerates only a *missing* token, logged; a present token is always verified.
+- **Public:** `GET /certificates/{id}` and its `/manifest`, `/qr`, `/download`; `POST /verify`, `POST /verify/batch`; `GET /public-key.pem`; `/health`, `/version`, `/docs`, `/redoc`, `/openapi.json`, `/metrics`.
+- **Rate limits** key on `bastion:{sub}` for a bastion token, on `inkprint-frontend:{visitor address}` for the frontend's (its `sub` is constant), else on the visitor's address — the leftmost `X-Forwarded-For` entry, since uvicorn runs with `--proxy-headers --forwarded-allow-ips '*'` behind Render.
 
 ---
 
@@ -272,6 +291,8 @@ src/inkprint/
 
 Every request gets a unique `X-Request-ID` header. The stdlib logging config emits structured JSON logs in production. Prometheus `/metrics` endpoint exposes request latency, counts, and active connections.
 
+**Per-request query receipts** ([slowquery-detective](https://pypi.org/project/slowquery-detective/) 0.2, [spec 10](docs/specs/10-query-observability.md)): every statement a request tagged `X-Request-Id: R` runs is counted against R in schema `slowquery` of inkprint's own Postgres (beside the Alembic-managed tables and pgvector; the in-memory store on SQLite). `GET /_slowquery/queries?request_id=R` lists them — 🔐 bastion's token only: a missing or invalid token is 401, the frontend's token 403.
+
 ---
 
 ## 🚀 Run locally
@@ -285,9 +306,11 @@ uv sync
 # 2. signing keys (optional — ephemeral keys are generated at startup if absent)
 uv run python scripts/generate_keys.py   # Ed25519 keypair → keys/
 
-# 3. serve — no config required; persists to a local SQLite file by default,
-#    and the schema is created automatically on startup
-uv run uvicorn inkprint.main:app --reload
+# 3. serve — persists to a local SQLite file by default, and the schema is
+#    created automatically on startup. DEMO_MODE=true lets the token-protected
+#    routes run without a platform token (a missing token is logged, never an
+#    invalid one); leave it unset and they answer 401.
+DEMO_MODE=true uv run uvicorn inkprint.main:app --reload
 # → http://localhost:8000/docs
 ```
 
@@ -348,8 +371,8 @@ Three tiers:
 
 | Metric | Value |
 |---|---|
-| **Test count** | 447 tests |
-| **Line coverage** | **98.34%** |
+| **Test count** | 656 tests |
+| **Line coverage** | **98.68%** |
 | **Eval: fingerprint (SimHash-only)** | **86%** (86/100, target >= 85%) — measured, reproducible via `uv run python evals/run_evals.py` |
 | **Eval: fingerprint (SimHash + embedding)** | Not measured. No combined evaluator exists (`evals/fingerprint_eval.py` is SimHash-only); >= 90% is a design target, not a result — see [`evals/report.md`](evals/report.md) |
 | **Eval: tamper resilience** | **100%** (50/50) — measured |

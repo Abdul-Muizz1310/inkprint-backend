@@ -6,6 +6,11 @@ Step-by-step walkthrough for interviews and live demos.
 
 - Backend live at `https://inkprint-backend.onrender.com` (check `/health`)
 - A terminal with `curl` and `python` (for JSON formatting)
+- For the token-protected calls (issuing, batch issue, diff, leak scan, search, dossier envelope), a
+  platform token from bastion: add `-H "X-Platform-Token: $TOKEN"` to those `curl`s. The deployment
+  tolerates a missing token while `DEMO_MODE=true`; once it is `false` they answer
+  `401 missing_platform_token`. Verification (`GET /certificates/…`, `/verify`, `/verify/batch`,
+  `/public-key.pem`) is public either way ([spec 09](specs/09-platform-token.md)).
 
 ## 1. Issue a certificate (10 seconds)
 

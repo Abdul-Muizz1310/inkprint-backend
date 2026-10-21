@@ -1,124 +1,111 @@
-"""X-Platform-Token middleware — verifies bastion-minted Ed25519 platform JWTs.
+"""X-Platform-Token middleware — platform contract v2 (spec 09).
 
-In demo mode (the default for this deployment) the middleware accepts every
-request and logs a one-time warning. When demo mode is off AND a bastion public
-key is configured — either ``BASTION_SIGNING_KEY_PUBLIC`` (base64 DER) or fetched
-once from ``BASTION_PUBLIC_KEY_URL`` and cached for an hour — it verifies the
-EdDSA-signed ``X-Platform-Token`` on every non-exempt route and rejects invalid
-or missing tokens with 401. The platform and docs endpoints are always exempt.
+The imperative shell around ``token_verifier``: it decides public vs protected
+(``public_routes``), resolves the trusted keys (``trusted_keys``), reads the token
+from ``X-Platform-Token`` or ``Authorization: Bearer``, and answers:
 
-Enforcement is opt-in: with no key configured the middleware fails open, since
-bastion is the only minter and frontends call this service directly in the
-demo deployment. Token format is bastion's ``{sub, role, service, iat, exp}``
-EdDSA JWT (see bastion ``src/lib/gateway/jwt.ts``).
+- no key source configured ⇒ 503 ``platform_auth_unconfigured`` (fail closed),
+  except under the test settings;
+- no token ⇒ 401 ``missing_platform_token``, unless ``DEMO_MODE`` (then anonymous,
+  logged);
+- a token that fails any check ⇒ 401 ``invalid_platform_token`` — in
+  ``DEMO_MODE`` too;
+- a valid token ⇒ the request proceeds with its ``Principal`` attached, which the
+  rate limiter keys on.
+
+The token itself is never logged; a rejection logs the check that failed.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 import time
 from collections.abc import Awaitable, Callable
+from typing import Final
 
-import httpx
-import jwt
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
+from starlette.datastructures import Headers
+
+from inkprint.core.config import Settings
+from inkprint.platform.public_routes import is_public
+from inkprint.platform.token_verifier import (
+    Accepted,
+    Principal,
+    Rejected,
+    verify_platform_token,
+)
+from inkprint.platform.trusted_keys import TrustedKeySource
 
 logger = logging.getLogger(__name__)
 
 _Handler = Callable[[Request], Awaitable[Response]]
 
-_HEADER = "x-platform-token"
-_EXEMPT_EXACT = frozenset({"/health", "/version", "/metrics", "/openapi.json", "/public-key.pem"})
-_EXEMPT_PREFIXES = ("/docs", "/redoc")
-_PUBLIC_KEY_TTL_S = 3600.0
-
-# (fetched_at_monotonic, pem) — only used for the BASTION_PUBLIC_KEY_URL path.
-_key_cache: tuple[float, str | None] = (0.0, None)
-
-# Module-level async client reused across key fetches so we never build (and
-# discard) a TLS connection pool per request, and never block the event loop
-# with a synchronous fetch (P10 / platform-token async correctness).
-_http_client: httpx.AsyncClient | None = None
+_HEADER: Final = "x-platform-token"
+_STATE_KEY: Final = "platform_principal"
 
 
-def _get_http_client() -> httpx.AsyncClient:
-    global _http_client
-    if _http_client is None:
-        _http_client = httpx.AsyncClient(timeout=5.0)
-    return _http_client
+def read_token(headers: Headers) -> str | None:
+    """``X-Platform-Token`` first, then ``Authorization: Bearer``; blank means none."""
+    direct = headers.get(_HEADER, "").strip()
+    if direct:
+        return direct
+    scheme, _, credentials = headers.get("authorization", "").strip().partition(" ")
+    if scheme.lower() == "bearer" and credentials.strip():
+        return credentials.strip()
+    return None
 
 
-def reset_public_key_cache() -> None:
-    """Clear the fetched-public-key cache (test seam)."""
-    global _key_cache
-    _key_cache = (0.0, None)
+def request_principal(request: Request) -> Principal | None:
+    """The authenticated caller of ``request``, or ``None`` for an anonymous one."""
+    principal = getattr(request.state, _STATE_KEY, None)
+    return principal if isinstance(principal, Principal) else None
 
 
-def _wrap_pem(b64_der: str) -> str:
-    return f"-----BEGIN PUBLIC KEY-----\n{b64_der.strip()}\n-----END PUBLIC KEY-----\n"
+def _deny(status: int, detail: str) -> JSONResponse:
+    return JSONResponse({"detail": detail}, status_code=status)
 
 
-async def load_public_key_pem() -> str | None:
-    """Resolve bastion's Ed25519 public key as PEM (env first, then cached URL).
-
-    The URL path uses an awaited, module-level ``httpx.AsyncClient`` so a slow
-    key fetch never blocks the single-threaded event loop for every other
-    in-flight request.
-    """
-    raw = os.environ.get("BASTION_SIGNING_KEY_PUBLIC")
-    if raw:
-        return _wrap_pem(raw)
-
-    url = os.environ.get("BASTION_PUBLIC_KEY_URL")
-    if not url:
-        return None
-
-    global _key_cache
-    cached_at, cached = _key_cache
-    now = time.monotonic()
-    if cached is not None and (now - cached_at) < _PUBLIC_KEY_TTL_S:
-        return cached
-    try:
-        resp = await _get_http_client().get(url)
-        resp.raise_for_status()
-        pem = _wrap_pem(str(resp.json()["publicKey"]))
-    except Exception:  # pragma: no cover - network failure path
-        logger.warning("could not fetch bastion public key from %s", url)
-        return None
-    _key_cache = (now, pem)
-    return pem
-
-
-def _is_exempt(path: str) -> bool:
-    return path in _EXEMPT_EXACT or path.startswith(_EXEMPT_PREFIXES)
-
-
-def _verify(token: str, pem: str) -> bool:
-    try:
-        jwt.decode(token, pem, algorithms=["EdDSA"])
-    except Exception:
-        return False
-    return True
-
-
-def install_platform_token(app: FastAPI, *, demo_mode: bool) -> None:
-    """Attach the X-Platform-Token verification middleware to ``app``."""
+def install_platform_token(
+    app: FastAPI, *, settings: Settings, keys: TrustedKeySource | None = None
+) -> None:
+    """Attach the contract-v2 verification middleware to ``app``."""
+    source = keys or TrustedKeySource.from_settings(settings)
+    demo_mode = settings.demo_mode
+    fail_open_without_keys = settings.is_test
     if demo_mode:
-        logger.warning(
-            "DEMO_MODE active: X-Platform-Token validation is bypassed; accepting all requests"
-        )
+        logger.warning("DEMO_MODE active: requests without a platform token proceed anonymously")
 
     @app.middleware("http")
     async def _platform_token_middleware(request: Request, call_next: _Handler) -> Response:
-        if demo_mode or _is_exempt(request.url.path):
+        method, path = request.method, request.url.path
+        if is_public(method, path):
             return await call_next(request)
-        pem = await load_public_key_pem()
-        if pem is None:
-            # Enforcement is opt-in; with no key configured we fail open.
-            return await call_next(request)
-        token = request.headers.get(_HEADER)
-        if not token or not _verify(token, pem):
-            return JSONResponse({"error": "invalid platform token"}, status_code=401)
-        return await call_next(request)
+
+        if not source.is_configured():
+            if fail_open_without_keys:
+                return await call_next(request)
+            logger.warning("platform auth unconfigured: refusing %s %s", method, path)
+            return _deny(503, "platform_auth_unconfigured")
+
+        token = read_token(request.headers)
+        if token is None:
+            if demo_mode:
+                logger.warning("DEMO_MODE: anonymous %s %s (no platform token)", method, path)
+                return await call_next(request)
+            return _deny(401, "missing_platform_token")
+
+        trusted = await source.resolve()
+        if not trusted:
+            logger.warning(
+                "platform auth unconfigured: no trusted key resolved for %s %s", method, path
+            )
+            return _deny(503, "platform_auth_unconfigured")
+
+        match verify_platform_token(token, trusted, now=int(time.time())):
+            case Rejected(reason=reason):
+                logger.warning("platform token rejected (%s) on %s %s", reason, method, path)
+                return _deny(401, "invalid_platform_token")
+            case Accepted(principal=principal):
+                setattr(request.state, _STATE_KEY, principal)
+                return await call_next(request)

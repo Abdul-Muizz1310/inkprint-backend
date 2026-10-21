@@ -26,10 +26,11 @@ from inkprint.api.routers.dossiers import router as dossiers_router
 from inkprint.api.routers.leak import router as leak_router
 from inkprint.api.routers.search import router as search_router
 from inkprint.api.routers.verify import router as verify_router
-from inkprint.core.config import Settings, get_settings
+from inkprint.core.config import Settings
 from inkprint.platform.health import router as health_router
-from inkprint.platform.middleware import add_middleware
+from inkprint.platform.middleware import add_cors, add_request_id
 from inkprint.platform.platform_token import install_platform_token
+from inkprint.platform.query_observability import install_query_observability
 from inkprint.platform.rate_limit import install_rate_limit
 
 
@@ -94,9 +95,9 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-def create_app() -> FastAPI:
-    """Build and return the FastAPI application."""
-    settings = Settings()
+def create_app(settings: Settings | None = None) -> FastAPI:
+    """Build and return the FastAPI application (``settings`` defaults to the environment)."""
+    settings = settings or Settings()
 
     application = FastAPI(
         title="inkprint",
@@ -112,17 +113,28 @@ def create_app() -> FastAPI:
     application.state.key_id = key_id
     application.state.settings = settings
 
-    # Middleware (must be added before routers for CORS to work on all routes)
-    add_middleware(application)
+    # Middleware. The last added runs outermost, so the order below gives
+    # CORS -> slowquery tagger -> Prometheus -> request id -> platform token ->
+    # rate limit -> routes (spec 09 §6, spec 10): the limiter sees the
+    # authenticated caller, the tagger wraps everything that may run a
+    # statement, and CORS decorates rejections.
     install_rate_limit(
         application,
         per_minute=settings.rate_limit_per_minute,
         enabled=settings.rate_limit_enabled,
     )
-    install_platform_token(application, demo_mode=get_settings().demo_mode)
+    install_platform_token(application, settings=settings)
+    add_request_id(application)
 
     # Prometheus metrics — exposes GET /metrics
     Instrumentator().instrument(application).expose(application, include_in_schema=False)
+
+    # slowquery-detective on the engine every repository uses (it exists now;
+    # creating it opened no connection). Mounts GET /_slowquery/queries.
+    from inkprint.core.db import get_engine
+
+    install_query_observability(application, get_engine())
+    add_cors(application, app_env=settings.app_env)
 
     # Routers
     application.include_router(health_router)

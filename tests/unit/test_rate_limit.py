@@ -68,3 +68,19 @@ def test_forwarded_visitors_get_their_own_bucket() -> None:
     assert client.post("/certificates", headers=alice).status_code == 200
     assert client.post("/certificates", headers=bob).status_code == 200
     assert client.post("/certificates", headers=alice).status_code == 429
+
+
+def test_pt14_identity_per_contract_v2() -> None:
+    """bastion: ``bastion:{sub}``; a frontend: ``{iss}:{address}``; anonymous: the address."""
+    from inkprint.platform.rate_limit import rate_limit_identity
+    from inkprint.platform.token_verifier import Principal
+
+    bastion = Principal(iss="bastion", sub="v_abcdef1234", role="editor")
+    frontend = Principal(iss="inkprint-frontend", sub="inkprint-frontend", role="frontend")
+    assert rate_limit_identity(bastion, "203.0.113.7") == "bastion:v_abcdef1234"
+    assert rate_limit_identity(bastion, None) == "bastion:v_abcdef1234"
+    assert rate_limit_identity(frontend, "203.0.113.7") == "inkprint-frontend:203.0.113.7"
+    assert rate_limit_identity(frontend, "198.51.100.9") == "inkprint-frontend:198.51.100.9"
+    assert rate_limit_identity(frontend, None) == "inkprint-frontend:unknown"
+    assert rate_limit_identity(None, "203.0.113.7") == "203.0.113.7"
+    assert rate_limit_identity(None, None) == "unknown"

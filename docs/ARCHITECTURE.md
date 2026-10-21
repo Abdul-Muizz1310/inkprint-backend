@@ -66,7 +66,7 @@ sequenceDiagram
 | **Fingerprint** | `src/inkprint/fingerprint/` | SimHash, Voyage embeddings, comparison/verdict |
 | **Leak** | `src/inkprint/leak/` | Corpus scanners (CC, HF, Stack), scoring, orchestrator |
 | **Core** | `src/inkprint/core/` | Config, async DB engine + `session_scope`, R2 client, key loading |
-| **Platform** | `src/inkprint/platform/` | Health, version, public-key, request-ID/CORS middleware, per-IP rate limiting, `X-Platform-Token` JWT validation |
+| **Platform** | `src/inkprint/platform/` | Health, version, public-key, request-ID/CORS middleware, per-caller rate limiting (`bastion:{sub}`, `inkprint-frontend:{address}`, else the address), `X-Platform-Token` verification to platform contract v2 (spec 09) |
 | **Models** | `src/inkprint/models/` | SQLAlchemy ORM models (certificates, derivative_links, leak_scan_jobs, leak_scans, dossier_envelopes) |
 | **Evals** | `src/inkprint/evals/` | Evaluation runners (fingerprint, tamper, leak) |
 
