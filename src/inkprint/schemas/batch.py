@@ -45,7 +45,9 @@ class BatchFingerprints(BaseModel):
 
     sha256: str
     simhash: int
-    embedding_id: UUID
+    # None when the batched embedding call failed: the certificate is signed
+    # and verifiable, but semantic search will not rank it (spec 07).
+    embedding_id: UUID | None
 
 
 class BatchCertificateRecord(BaseModel):

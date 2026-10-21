@@ -15,10 +15,15 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from inkprint.core.db import session_scope
+from inkprint.fingerprint import embed as _embed_module
 from inkprint.main import app
 from inkprint.provenance.envelope_builder import canonical_bundle_bytes
 from inkprint.repositories import certificate_repo
 from inkprint.services import certificate_service, envelope_service
+
+# Captured at import, before the autouse fixture swaps it for a mock: TC-B-10
+# drives the real batched call against a fake Voyage client.
+_REAL_COMPUTE_EMBEDDINGS = _embed_module.compute_embeddings
 
 pytestmark = pytest.mark.integration
 
@@ -231,38 +236,161 @@ class TestBatchCreateCertificates:
         assert stored["storage_key"] == f"certificates/{batch_id}.json"
         assert single.json()["storage_key"] == f"certificates/{single.json()['id']}.json"
 
-    async def test_tc_b_10_embedding_failure_rolls_back(self, client: AsyncClient) -> None:
-        """TC-B-10: Embedding API failure → 503 with no commits.
+    async def test_tc_b_10_rate_limited_embedding_still_certifies_every_item(
+        self, client: AsyncClient, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """TC-B-10: Voyage answers 429 → 200, every item signed, verifiable, unembedded.
 
-        The batch is embedded in a single call (OPT-1), so an embedding failure
-        is all-or-nothing by construction: nothing is persisted.
+        Certification (hash + Ed25519 signature) must never depend on the
+        embedding quota: a free-tier Voyage key rejects a dozen scraped pages in
+        one call, and that used to fail bastion's whole seal stage with a 503.
         """
+        import logging
+
+        import voyageai.error
+
+        texts = [f"evidence page {i}: " + "words " * 50 for i in range(4)]
         async with session_scope() as s:
             baseline = await certificate_repo.count(s)
 
-        async def failing_batch(texts: list[str]) -> list[list[float]]:
-            raise RuntimeError("voyage down")
+        class _RateLimitedVoyage:
+            async def embed(self, *_args: Any, **_kwargs: Any) -> Any:
+                raise voyageai.error.RateLimitError(
+                    "You have not yet added your payment method ... reduced rate limits",
+                    http_status=429,
+                )
 
-        with patch(
-            "inkprint.fingerprint.embed.compute_embeddings",
-            new=AsyncMock(side_effect=failing_batch),
+        caplog.set_level(logging.DEBUG, logger="inkprint.services.batch_service")
+        with (
+            patch("inkprint.fingerprint.embed.compute_embeddings", new=_REAL_COMPUTE_EMBEDDINGS),
+            patch("inkprint.fingerprint.embed._client", new=lambda: _RateLimitedVoyage()),
         ):
             resp = await client.post(
                 "/certificates/batch",
-                json={
-                    "items": [
-                        {"text": "a", "author": "a@b.com"},
-                        {"text": "b", "author": "a@b.com"},
-                        {"text": "c", "author": "a@b.com"},
-                        {"text": "d", "author": "a@b.com"},
-                    ]
-                },
+                json={"items": [{"text": t, "author": "a@b.com"} for t in texts]},
             )
 
-        assert resp.status_code == 503
+        assert resp.status_code == 200, resp.text
+        certs = resp.json()["certificates"]
+        assert len(certs) == len(texts)
+        assert all(c["fingerprints"]["embedding_id"] is None for c in certs)
+
         async with session_scope() as s:
-            after = await certificate_repo.count(s)
-        assert after == baseline
+            assert await certificate_repo.count(s) == baseline + len(texts)
+        for c in certs:
+            stored = await certificate_service.get_certificate(c["certificate_id"])
+            assert stored is not None
+            assert stored["embedding"] == [0.0] * 768
+
+        verified = await client.post(
+            "/verify/batch",
+            json={"items": [{"certificate_id": c["certificate_id"]} for c in certs]},
+        )
+        assert verified.status_code == 200
+        for result in verified.json()["results"]:
+            assert result["valid"] is True
+            assert result["checks"] == {"signature": True, "hash": True}
+
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        message = warnings[0].getMessage()
+        assert "RateLimitError" in message
+        assert not any(t in message or "evidence page" in message for t in texts)
+        assert warnings[0].exc_info is None
+
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            "ServiceUnavailableError",
+            "Timeout",
+            "AuthenticationError",
+            "APIConnectionError",
+            "RuntimeError",
+        ],
+    )
+    async def test_tc_b_10b_any_embedding_failure_still_certifies(
+        self, client: AsyncClient, failure: str
+    ) -> None:
+        """TC-B-10b: a 5xx, a timeout, a missing key — same degradation as TC-B-10."""
+        import voyageai.error
+
+        error_type = getattr(voyageai.error, failure, None) or RuntimeError
+
+        async def _failing(texts: list[str]) -> list[list[float]]:
+            raise error_type("embedding backend failed")
+
+        with patch(
+            "inkprint.fingerprint.embed.compute_embeddings", new=AsyncMock(side_effect=_failing)
+        ):
+            resp = await client.post(
+                "/certificates/batch",
+                json={"items": [{"text": "one", "author": "a@b.com"}]},
+            )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["certificates"][0]["fingerprints"]["embedding_id"] is None
+
+    async def test_tc_b_10b_a_short_embedding_answer_is_a_failure_too(
+        self, client: AsyncClient, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """TC-B-10b: vectors that do not line up with the texts are never stored."""
+        import logging
+
+        caplog.set_level(logging.WARNING, logger="inkprint.services.batch_service")
+        with patch(
+            "inkprint.fingerprint.embed.compute_embeddings",
+            new=AsyncMock(return_value=[[0.1] * 768]),
+        ):
+            resp = await client.post(
+                "/certificates/batch",
+                json={"items": [{"text": t, "author": "a@b.com"} for t in ("one", "two")]},
+            )
+        assert resp.status_code == 200, resp.text
+        certs = resp.json()["certificates"]
+        assert [c["fingerprints"]["embedding_id"] for c in certs] == [None, None]
+        assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
+
+    async def test_tc_b_10c_database_failure_mid_batch_rolls_back_everything(self) -> None:
+        """TC-B-10c: rows already flushed inside the transaction are not kept."""
+        async with session_scope() as s:
+            baseline = await certificate_repo.count(s)
+
+        real_add_many = certificate_repo.add_many
+
+        async def _fail_after_first(session: Any, records: list[dict[str, Any]]) -> None:
+            await real_add_many(session, records[:1])  # flushed into the transaction
+            raise RuntimeError("database went away mid-batch")
+
+        transport = ASGITransport(app=app, raise_app_exceptions=False)
+        with patch.object(certificate_repo, "add_many", new=_fail_after_first):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(
+                    "/certificates/batch",
+                    json={
+                        "items": [
+                            {"text": "first", "author": "a@b.com"},
+                            {"text": "second", "author": "a@b.com"},
+                            {"text": "third", "author": "a@b.com"},
+                        ]
+                    },
+                )
+        assert resp.status_code == 500
+        async with session_scope() as s:
+            assert await certificate_repo.count(s) == baseline
+
+    async def test_tc_b_10d_a_working_embedding_keeps_its_id_and_vectors(
+        self, client: AsyncClient
+    ) -> None:
+        """TC-B-10d: no regression on the happy path."""
+        resp = await client.post(
+            "/certificates/batch",
+            json={"items": [{"text": "embedded fine", "author": "a@b.com"}]},
+        )
+        assert resp.status_code == 200
+        cert = resp.json()["certificates"][0]
+        assert UUID(cert["fingerprints"]["embedding_id"])
+        stored = await certificate_service.get_certificate(cert["certificate_id"])
+        assert stored is not None
+        assert stored["embedding"] == [0.1] * 768
 
 
 # ── POST /dossiers/envelope ──────────────────────────────────────────────────

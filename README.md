@@ -56,7 +56,7 @@ Most content "watermarking" tools embed invisible markers that can be stripped. 
 - 🧬 Dual fingerprint: SHA-256 (exact match) + SimHash + Voyage AI embedding (paraphrase detection)
 - 🔍 Async leak scanning across Common Crawl, HuggingFace, The Stack v2
 - 📡 SSE streaming for live leak-scan progress
-- 🔎 Semantic search ranks registered certificates by embedding cosine similarity (real embeddings need a Voyage key; a pgvector ANN index is an optional production optimization)
+- 🔎 Semantic search ranks registered certificates by embedding cosine similarity (real embeddings need a Voyage key; a pgvector ANN index is an optional production optimization). Embeddings are **best-effort**: when the Voyage call fails — a free-tier key answers 429 to a dozen scraped pages in one request — certificates are still hashed, signed and verifiable, stored with a zero vector (`embedding_id: null` in a batch response), and semantic search simply does not find them
 - 📄 QR code generation linking to the certificate page
 - 🔐 Downloadable `.zip` archive: manifest, public key, and the stored text — everything a recipient needs to verify offline
 - ✅ Tamper detection with itemised **signature + hash** verdicts (`POST /verify`)
@@ -240,7 +240,7 @@ Routes marked 🔐 need a platform token ([below](#-platform-token)); the rest a
 | `GET`  | `/certificates/{id}/manifest` | Raw C2PA v2.2 JSON manifest. |
 | `GET`  | `/certificates/{id}/qr` | QR code PNG linking to the certificate page. |
 | `GET`  | `/certificates/{id}/download` | `.zip` archive: `manifest.json` + `public_key.pem` + `content.txt` (the stored text). |
-| `POST` | `/certificates/batch` 🔐 | Issue 1–50 certificates atomically. All-or-nothing: any failure persists none of them. |
+| `POST` | `/certificates/batch` 🔐 | Issue 1–50 certificates atomically. All-or-nothing: any failure persists none of them — except the embedding call, which is best-effort (below). |
 | `POST` | `/verify` | Tamper detection — **signature + hash** verdicts over the submitted manifest and text. |
 | `POST` | `/verify/batch` | Verify 1–50 certificates by id. Adds `simhash` and `embedding` verdicts for items that supply `text`; unknown ids fail softly with `reason: "unknown_certificate"`. |
 | `POST` | `/dossiers/envelope` 🔐 | Sign one C2PA-aligned envelope manifest over a bundle of evidence certificates plus a debate-transcript and perf-receipt hash. Idempotent per `dossier_id`; a different bundle for the same id returns 409. |
@@ -371,8 +371,8 @@ Three tiers:
 
 | Metric | Value |
 |---|---|
-| **Test count** | 656 tests |
-| **Line coverage** | **98.68%** |
+| **Test count** | 666 tests |
+| **Line coverage** | **98.69%** |
 | **Eval: fingerprint (SimHash-only)** | **86%** (86/100, target >= 85%) — measured, reproducible via `uv run python evals/run_evals.py` |
 | **Eval: fingerprint (SimHash + embedding)** | Not measured. No combined evaluator exists (`evals/fingerprint_eval.py` is SimHash-only); >= 90% is a design target, not a result — see [`evals/report.md`](evals/report.md) |
 | **Eval: tamper resilience** | **100%** (50/50) — measured |

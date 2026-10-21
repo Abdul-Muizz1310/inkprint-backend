@@ -43,8 +43,10 @@ async def _compute_embedding_or_zero(text: str) -> list[float]:
 
         return await compute_embedding(text)
     except Exception:
+        from inkprint.fingerprint.embed import zero_embedding
+
         logger.debug("Embedding computation failed; using zero vector fallback")
-        return [0.0] * 768
+        return zero_embedding()
 
 
 def _detect_language(text: str) -> str | None:

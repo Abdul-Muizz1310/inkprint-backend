@@ -28,24 +28,38 @@ from inkprint.repositories import certificate_repo
 logger = logging.getLogger(__name__)
 
 
-class EmbeddingServiceUnavailableError(RuntimeError):
-    """Raised when the embedding backend fails mid-batch."""
+async def _compute_embeddings_or_none(texts: list[str]) -> list[list[float]] | None:
+    """Embed all batch texts in one call, or ``None`` when that call fails.
 
-
-async def _compute_embeddings_or_raise(texts: list[str]) -> list[list[float]]:
-    """Embed all batch texts in one call; raise on failure.
-
-    Unlike the single-cert path (which falls back to a zero vector), the batch
-    path prefers failing loud to preserve all-or-nothing semantics. Sending the
-    whole batch in a single Voyage request (rather than one call per item) keeps
-    latency and API-quota flat in the batch size (OPT-1).
+    Embeddings are best-effort (spec 07 "Embeddings are best-effort"):
+    certification — the hash and the Ed25519 signature — must never depend on
+    the embedding quota, so a failure (a free-tier 429, a 5xx, a timeout, no
+    key) degrades every item to the zero-vector fallback, exactly as the
+    single-certificate path does. One WARNING names the failure class, never
+    the texts or the provider's message. Sending the whole batch in a single
+    Voyage request keeps latency and quota flat in the batch size (OPT-1).
     """
     try:
         from inkprint.fingerprint.embed import compute_embeddings
 
-        return await compute_embeddings(texts)
+        vectors = await compute_embeddings(texts)
     except Exception as exc:
-        raise EmbeddingServiceUnavailableError(str(exc)) from exc
+        logger.warning(
+            "batch embedding failed (%s); certifying %d item(s) without embeddings",
+            type(exc).__name__,
+            len(texts),
+        )
+        return None
+    if len(vectors) != len(texts):
+        # Vectors that do not line up with their texts must never be stored.
+        logger.warning(
+            "batch embedding returned %d vector(s) for %d text(s); "
+            "certifying them without embeddings",
+            len(vectors),
+            len(texts),
+        )
+        return None
+    return vectors
 
 
 async def create_batch(
@@ -58,8 +72,9 @@ async def create_batch(
     """Create N certificates atomically.
 
     All records are assembled in local lists; only on full success are they
-    committed to the underlying store. If any item fails — shape, embedding,
-    manifest schema — raises without mutating the store.
+    committed to the underlying store, in one transaction. If any item fails —
+    shape, manifest schema, the database write — nothing is persisted. A failed
+    embedding call is not a failure: see ``_compute_embeddings_or_none``.
     """
     assert isinstance(private_key, Ed25519PrivateKey)
     assert isinstance(public_key, Ed25519PublicKey)
@@ -68,11 +83,14 @@ async def create_batch(
     pending_records: list[dict[str, Any]] = []
     response_items: list[dict[str, Any]] = []
 
-    # One batched embedding request for the whole batch (OPT-1). All-or-nothing:
-    # a failure here raises before anything is persisted.
-    embeddings = await _compute_embeddings_or_raise([item["text"] for item in items])
+    # One batched embedding request for the whole batch (OPT-1). Best-effort:
+    # on failure every item is still certified, with the zero-vector fallback
+    # and no embedding id.
+    embeddings = await _compute_embeddings_or_none([item["text"] for item in items])
+    from inkprint.fingerprint.embed import zero_embedding
 
-    for item, embedding in zip(items, embeddings, strict=True):
+    for index, item in enumerate(items):
+        embedding = embeddings[index] if embeddings is not None else zero_embedding()
         text: str = item["text"]
         author: str = item["author"]
         metadata: dict[str, str] | None = item.get("metadata")
@@ -91,7 +109,7 @@ async def create_batch(
             language = None
 
         cert_id = uuid4()
-        embedding_id = uuid4()
+        embedding_id: UUID | None = uuid4() if embeddings is not None else None
 
         manifest = build_manifest(
             certificate_id=cert_id,
@@ -112,7 +130,7 @@ async def create_batch(
             "content_hash": content_hash,
             "simhash": simhash_val,
             "embedding": embedding,
-            "embedding_id": str(embedding_id),
+            "embedding_id": str(embedding_id) if embedding_id is not None else None,
             "content_len": len(canonical),
             "language": language,
             "issued_at": issued_at,
@@ -143,8 +161,8 @@ async def create_batch(
     # does — and never fails the batch.
     await _archive_batch(pending_records)
 
-    # Commit: all-or-nothing. Any embedding/manifest failure above raised
-    # before this point, so nothing is persisted on a mid-batch failure.
+    # Commit: all-or-nothing. A manifest failure above raised before this point,
+    # and a database failure inside rolls the whole transaction back.
     async with session_scope() as session:
         await certificate_repo.add_many(session, pending_records)
 
