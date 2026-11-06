@@ -40,20 +40,20 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "pytest>=9.1.1",
-    "pytest-asyncio>=1.4.0",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1.post1",
     "pytest-cov>=6.0",
     "respx>=0.21",
     # Real-Postgres integration tier (tests/integration/test_postgres_tier.py).
     "testcontainers[postgres]>=4.15.0",
     "pyyaml>=6.0",
-    "ruff>=0.16.3",
-    "mypy>=2.3.1",
-    "types-boto3>=1.43.73",
+    "ruff>=0.17.3",
+    "mypy>=2.4.1",
+    "types-boto3>=1.43.123",
 ]
 
 [build-system]
-requires = ["hatchling>=1.32.0"]
+requires = ["hatchling>=1.33.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
