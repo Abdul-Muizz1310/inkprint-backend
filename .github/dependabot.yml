@@ -20,5 +20,9 @@ updates:
       - "dependencies"
     open-pull-requests-limit: 5
     groups:
+      # Minor/patch only: a group PR cannot be partially merged, so one breaking
+      # major inside it would hold every benign bump hostage. Majors arrive as
+      # their own PRs and are judged one at a time.
       dev-dependencies:
         dependency-type: "development"
+        update-types: ["minor", "patch"]

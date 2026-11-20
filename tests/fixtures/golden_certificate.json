@@ -1,0 +1,75 @@
+{
+  "_comment": "Golden certificate for tests/unit/test_golden_certificate.py (spec 01-signing, TC-S-14..TC-S-18). Issued with cryptography 50.0.0 on 2026-11-20, before that dependency pass. NEVER regenerate it to make a test pass: a failure here means certificates already issued would stop verifying. The key pair is a TEST-ONLY key derived from a public seed and is never deployed.",
+  "issued_with": {
+    "cryptography": "50.0.0"
+  },
+  "env": {
+    "INKPRINT_SIGNING_KEY_PRIVATE": "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1DNENBUUF3QlFZREsyVndCQ0lFSUtPTDVMeWdmcUZic2JrLzBnMGlYcEtJR0VuWkhncnl1d0Z2KzEvdUVSZTEKLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQo=",
+    "INKPRINT_SIGNING_KEY_PUBLIC": "LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUNvd0JRWURLMlZ3QXlFQXY1S2UrcVRnQlFDQ3BkUXMvTVBnRmE3ZGNubzRaNzA4bVJ4b3B6dFJwNEE9Ci0tLS0tRU5EIFBVQkxJQyBLRVktLS0tLQo="
+  },
+  "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAv5Ke+qTgBQCCpdQs/MPgFa7dcno4Z708mRxopztRp4A=\n-----END PUBLIC KEY-----\n",
+  "key_id": "2plR1NNHSn1r15fI",
+  "text": "Cafe\u0301 notes,\n\n  drafted\tbefore the 2026-11 dependency pass.  ",
+  "content_hash": "280ff348a94c51ae6864df81a11e7894a41f4cbae2601587e913dd8905685db7",
+  "signature": "R0VuUMGCMvmH/3GHXFLFCfzwUz55XQND2/488GH0vaZNyBe5qbatpCciyaiOtiuu8jDPlrl1zADY7tNBHrRlAQ==",
+  "manifest": {
+    "@context": "https://c2pa.org/statements/v1",
+    "version": "2.2",
+    "title": "Content Credential for 6f2b1c4e-9d3a-4b7e-8f10-2a5c7d9e0b13",
+    "instance_id": "urn:uuid:6f2b1c4e-9d3a-4b7e-8f10-2a5c7d9e0b13",
+    "format": "text/plain",
+    "claim_generator": "inkprint/0.1.0",
+    "claim_generator_info": [
+      {
+        "name": "inkprint",
+        "version": "0.1.0"
+      }
+    ],
+    "legal_notice": "This certificate is issued by inkprint for informational purposes only. It does not constitute legal proof of authorship or copyright ownership. Consult qualified legal counsel for copyright matters.",
+    "assertions": [
+      {
+        "label": "c2pa.actions.v2",
+        "data": {
+          "actions": [
+            {
+              "action": "c2pa.created",
+              "when": "2026-11-20T12:00:00+00:00",
+              "digitalSourceType": "http://cv.iptc.org/newscodes/digitalsourcetype/humanEdits"
+            }
+          ]
+        }
+      },
+      {
+        "label": "c2pa.hash.data",
+        "data": {
+          "alg": "sha256",
+          "hash": "280ff348a94c51ae6864df81a11e7894a41f4cbae2601587e913dd8905685db7",
+          "pad": ""
+        }
+      },
+      {
+        "label": "stds.schema-org.CreativeWork",
+        "data": {
+          "@context": "https://schema.org",
+          "@type": "CreativeWork",
+          "author": {
+            "@type": "Person",
+            "identifier": "golden@example.com"
+          },
+          "dateCreated": "2026-11-20T12:00:00+00:00",
+          "inLanguage": "en",
+          "contentSize": 56
+        }
+      }
+    ],
+    "signature": {
+      "alg": "Ed25519",
+      "key_id": "2plR1NNHSn1r15fI",
+      "value": "R0VuUMGCMvmH/3GHXFLFCfzwUz55XQND2/488GH0vaZNyBe5qbatpCciyaiOtiuu8jDPlrl1zADY7tNBHrRlAQ==",
+      "signed_assertions": [
+        "c2pa.hash.data",
+        "stds.schema-org.CreativeWork"
+      ]
+    }
+  }
+}
