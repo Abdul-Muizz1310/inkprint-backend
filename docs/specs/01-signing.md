@@ -68,6 +68,26 @@ Ed25519 sign/verify roundtrip over canonicalized text. The signer produces a bas
 - [ ] `TC-S-12`: `load_signing_keys()` with missing env vars raises a clear startup error.
 - [ ] `TC-S-13`: `load_signing_keys()` with malformed base64 raises a clear error.
 
+### Regression: certificates already issued (golden certificate)
+
+A certificate is a promise that outlives the dependency set it was signed with. Every other case
+above generates a fresh keypair, so a `cryptography` upgrade that changed key loading, encoding or
+verification would pass them all while every certificate already in the database stopped
+verifying. `tests/fixtures/golden_certificate.json` freezes one certificate issued with
+`cryptography` 50.0.0 (TEST-ONLY key from a public seed, never deployed). It is never regenerated
+to make a test pass.
+
+- [x] `TC-S-14`: `load_signing_keys()` loads the fixture's keys from the production env format
+      (base64 PEM: PKCS8 private, SubjectPublicKeyInfo public) and derives the recorded key ID.
+- [x] `TC-S-15`: `verify_certificate()` returns `valid: true` (signature and hash) for the recorded
+      manifest and text under the recorded public key PEM.
+- [x] `TC-S-16`: `POST /verify` answers `valid: true` for the recorded manifest and text when the
+      app holds the recorded public key — the composed public verification flow.
+- [x] `TC-S-17`: Re-signing the recorded text with the recorded key reproduces the recorded
+      signature byte for byte, so certificates issued after an upgrade match those issued before.
+- [x] `TC-S-18`: The recorded manifest still validates against the committed schema, and one
+      changed character in the recorded text makes it `valid: false` (the fixture can fail).
+
 ## Acceptance criteria
 
 - [ ] Roundtrip sign/verify works for all test inputs.
